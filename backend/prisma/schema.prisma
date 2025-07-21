@@ -12,3 +12,54 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      Role     @default(EMPLOYEE)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  
+  // Relations
+  expenses         Expense[] @relation("UserExpenses")
+  approvedExpenses Expense[] @relation("ApprovedBy")
+  
+  @@map("users")
+}
+
+model Expense {
+  id          String        @id @default(uuid())
+  userId      String        @map("user_id")
+  amount      Decimal       @db.Decimal(10, 2)
+  category    String
+  description String?
+  date        DateTime
+  status      ExpenseStatus @default(PENDING)
+  approvedBy  String?       @map("approved_by")
+  receipt     String?       // URL to receipt file (bonus feature)
+  createdAt   DateTime      @default(now()) @map("created_at")
+  updatedAt   DateTime      @updatedAt @map("updated_at")
+  
+  // Relations
+  user     User  @relation("UserExpenses", fields: [userId], references: [id], onDelete: Cascade)
+  approver User? @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  
+  @@map("expenses")
+  @@index([userId])
+  @@index([category])
+  @@index([date])
+  @@index([status])
+}
+
+enum Role {
+  EMPLOYEE
+  ADMIN
+}
+
+enum ExpenseStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
