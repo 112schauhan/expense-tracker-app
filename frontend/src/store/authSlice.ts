@@ -10,9 +10,28 @@ interface AuthState {
   error: string | null
 }
 
+const loadStoredAuth = (): { user: User | null; token: string | null } => {
+  try {
+    const storedUser = localStorage.getItem("user")
+    const storedToken = localStorage.getItem("token")
+
+    return {
+      user: storedUser ? JSON.parse(storedUser) : null,
+      token: storedToken || null,
+    }
+  } catch (error) {
+    console.error("Error loading stored auth:", error)
+    localStorage.removeItem("user")
+    localStorage.removeItem("token")
+    return { user: null, token: null }
+  }
+}
+
+const { user: storedUser, token: storedToken } = loadStoredAuth()
+
 const initialState: AuthState = {
-  user: JSON.parse(localStorage.getItem("user") || "null"),
-  token: localStorage.getItem("token"),
+  user: storedUser,
+  token: storedToken,
   isLoading: false,
   error: null,
 }
@@ -52,11 +71,15 @@ const authSlice = createSlice({
       state.user = null
       state.token = null
       state.error = null
-      localStorage.removeItem("user")
-      localStorage.removeItem("token")
+      authService.logout()
     },
     clearError: (state) => {
       state.error = null
+    },
+    restoreAuth: (state) => {
+      const { user, token } = loadStoredAuth()
+      state.user = user
+      state.token = token
     },
   },
   extraReducers: (builder) => {
@@ -69,15 +92,25 @@ const authSlice = createSlice({
         state.isLoading = false
         state.user = action.payload.user
         state.token = action.payload.token
+        state.error = null
         localStorage.setItem("user", JSON.stringify(action.payload.user))
         localStorage.setItem("token", action.payload.token)
       })
       .addCase(login.rejected, (state, action) => {
         state.isLoading = false
         state.error = action.error.message || "Login failed"
+        state.user = null
+        state.token = null
+      })
+      .addCase(getCurrentUser.fulfilled, (state, action) => {
+        state.user = action.payload
+        state.error = null
+      })
+      .addCase(getCurrentUser.rejected, (state, action) => {
+        state.error = action.payload as string
       })
   },
 })
 
-export const { logout, clearError } = authSlice.actions
+export const { logout, clearError, restoreAuth } = authSlice.actions
 export default authSlice.reducer

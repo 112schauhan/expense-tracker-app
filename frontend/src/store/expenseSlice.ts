@@ -79,6 +79,18 @@ export const fetchAnalytics = createAsyncThunk(
   }
 )
 
+export const deleteExpense = createAsyncThunk(
+  "expenses/delete",
+  async (id: string, { rejectWithValue }) => {
+    try {
+      await expenseService.deleteExpense(id)
+      return id
+    } catch (error: any) {
+      return rejectWithValue(error.message || "Failed to delete expense")
+    }
+  }
+)
+
 const expenseSlice = createSlice({
   name: "expenses",
   initialState,
@@ -89,16 +101,35 @@ const expenseSlice = createSlice({
     clearError: (state) => {
       state.error = null
     },
+    clearExpenses: (state) => {
+      state.expenses = []
+    },
   },
   extraReducers: (builder) => {
     builder
-      .addCase(fetchExpenses.fulfilled, (state, action) => {
-        state.expenses = action.payload
-        state.isLoading = false
+      .addCase(createExpense.pending, (state) => {
+        state.isLoading = true
+        state.error = null
       })
       .addCase(createExpense.fulfilled, (state, action) => {
         state.expenses.unshift(action.payload)
         state.isLoading = false
+      })
+      .addCase(createExpense.rejected, (state, action) => {
+        state.isLoading = false
+        state.error = action.payload as string
+      })
+      .addCase(fetchExpenses.pending, (state) => {
+        state.isLoading = true
+        state.error = null
+      })
+      .addCase(fetchExpenses.fulfilled, (state, action) => {
+        state.expenses = action.payload
+        state.isLoading = false
+      })
+      .addCase(fetchExpenses.rejected, (state, action) => {
+        state.isLoading = false
+        state.error = action.payload as string
       })
       .addCase(updateExpenseStatus.fulfilled, (state, action) => {
         const index = state.expenses.findIndex(
@@ -107,14 +138,24 @@ const expenseSlice = createSlice({
         if (index !== -1) {
           state.expenses[index] = action.payload
         }
-        state.isLoading = false
+      })
+      .addCase(updateExpenseStatus.rejected, (state, action) => {
+        state.error = action.payload as string
       })
       .addCase(fetchAnalytics.fulfilled, (state, action) => {
         state.analytics = action.payload
-        state.isLoading = false
+      })
+      .addCase(fetchAnalytics.rejected, (state, action) => {
+        state.error = action.payload as string
+      })
+      .addCase(deleteExpense.fulfilled, (state, action) => {
+        state.expenses = state.expenses.filter((e) => e.id !== action.payload)
+      })
+      .addCase(deleteExpense.rejected, (state, action) => {
+        state.error = action.payload as string
       })
   },
 })
 
-export const { setFilters, clearError } = expenseSlice.actions
+export const { setFilters, clearError,clearExpenses } = expenseSlice.actions
 export default expenseSlice.reducer
