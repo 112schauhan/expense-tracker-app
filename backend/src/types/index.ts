@@ -3,6 +3,8 @@ export interface User {
   name: string
   email: string
   role: "EMPLOYEE" | "ADMIN"
+  createdAt: Date
+  updatedAt: Date
 }
 
 export interface AuthRequest extends Request {

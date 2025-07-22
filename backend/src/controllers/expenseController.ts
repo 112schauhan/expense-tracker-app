@@ -28,7 +28,15 @@ export const createExpense = async (req: any, res: Response) => {
       },
     })
 
-    res.status(201).json(expense)
+    const formattedExpense = {
+      ...expense,
+      amount: parseFloat(expense.amount.toString()),
+      date: expense.date.toISOString(),
+      createdAt: expense.createdAt.toISOString(),
+      updatedAt: expense.updatedAt.toISOString(),
+    }
+
+    res.status(201).json(formattedExpense)
   } catch (error) {
     console.error("Create expense error:", error)
     res.status(500).json({ error: "Internal server error" })
@@ -50,8 +58,16 @@ export const getExpenses = async (req: any, res: Response) => {
     if (status) whereClause.status = status
     if (startDate || endDate) {
       whereClause.date = {}
-      if (startDate) whereClause.date.gte = new Date(startDate as string)
-      if (endDate) whereClause.date.lte = new Date(endDate as string)
+      if (startDate) {
+        const start = new Date(startDate as string)
+        start.setHours(0, 0, 0, 0)
+        whereClause.date.gte = start
+      }
+      if (endDate) {
+        const end = new Date(endDate as string)
+        end.setHours(23, 59, 59, 999)
+        whereClause.date.lte = end
+      }
     }
 
     const expenses = await prisma.expense.findMany({
@@ -64,7 +80,15 @@ export const getExpenses = async (req: any, res: Response) => {
       orderBy: { createdAt: "desc" },
     })
 
-    res.json(expenses)
+    const formattedExpenses = expenses.map((expense) => ({
+      ...expense,
+      amount: parseFloat(expense.amount.toString()),
+      date: expense.date.toISOString(),
+      createdAt: expense.createdAt.toISOString(),
+      updatedAt: expense.updatedAt.toISOString(),
+    }))
+
+    res.json(formattedExpenses)
   } catch (error) {
     console.error("Get expenses error:", error)
     res.status(500).json({ error: "Internal server error" })
