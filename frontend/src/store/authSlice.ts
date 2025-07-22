@@ -1,5 +1,7 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { createSlice, createAsyncThunk } from "@reduxjs/toolkit"
 import type { User } from "../types"
+import { authService } from "../services/authService"
 
 interface AuthState {
   user: User | null
@@ -17,19 +19,28 @@ const initialState: AuthState = {
 
 export const login = createAsyncThunk(
   "auth/login",
-  async ({ email, password }: { email: string; password: string }) => {
-    const response = await fetch("/api/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email, password }),
-    })
-
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Login failed")
+  async (
+    { email, password }: { email: string; password: string },
+    { rejectWithValue }
+  ) => {
+    try {
+      const response = await authService.login({ email, password })
+      return response
+    } catch (error: any) {
+      return rejectWithValue(error.message || "Login failed")
     }
+  }
+)
 
-    return response.json()
+export const getCurrentUser = createAsyncThunk(
+  "auth/getCurrentUser",
+  async (_, { rejectWithValue }) => {
+    try {
+      const user = await authService.getCurrentUser()
+      return user
+    } catch (error: any) {
+      return rejectWithValue(error.message || "Failed to get user")
+    }
   }
 )
 

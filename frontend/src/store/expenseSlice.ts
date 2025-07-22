@@ -6,6 +6,8 @@ import {
   type ExpenseFilters,
   type AnalyticsData,
 } from "../types"
+import { expenseService } from "../services/expenseService"
+import { analyticsService } from "../services/analyticsService"
 
 interface ExpenseState {
   expenses: Expense[]
@@ -25,77 +27,55 @@ const initialState: ExpenseState = {
 
 export const createExpense = createAsyncThunk(
   "expenses/create",
-  async (expenseData: CreateExpenseData, { getState }) => {
-    const { auth } = getState() as any
-    const response = await fetch("/api/expenses", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${auth.token}`,
-      },
-      body: JSON.stringify(expenseData),
-    })
-
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Failed to create expense")
+  async (expenseData: CreateExpenseData, { rejectWithValue }) => {
+    try {
+      const expense = await expenseService.createExpense(expenseData)
+      return expense
+    } catch (error: any) {
+      return rejectWithValue(error.message || "Failed to create expense")
     }
-
-    return response.json()
   }
 )
 
 export const fetchExpenses = createAsyncThunk(
   "expenses/fetchExpenses",
-  async (filters: ExpenseFilters, { getState }) => {
-    const { auth } = getState() as any
-    const queryParams = new URLSearchParams()
-
-    Object.entries(filters).forEach(([key, value]) => {
-      if (value) queryParams.append(key, value)
-    })
-
-    const response = await fetch(`/api/expenses?${queryParams}`, {
-      headers: {
-        Authorization: `Bearer ${auth.token}`,
-      },
-    })
-
-    if (!response.ok) throw new Error("Failed to fetch expenses")
-    return response.json()
+  async (filters: ExpenseFilters, { rejectWithValue }) => {
+    try {
+      const expenses = await expenseService.getExpenses(filters)
+      return expenses
+    } catch (error: any) {
+      return rejectWithValue(error.message || "Failed to fetch expenses")
+    }
   }
 )
 
 export const updateExpenseStatus = createAsyncThunk(
   "expenses/updateStatus",
-  async ({ id, status }: { id: string; status: string }, { getState }) => {
-    const { auth } = getState() as any
-    const response = await fetch(`/api/expenses/${id}/status`, {
-      method: "PATCH",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${auth.token}`,
-      },
-      body: JSON.stringify({ status }),
-    })
-
-    if (!response.ok) throw new Error("Failed to update expense status")
-    return response.json()
+  async (
+    { id, status }: { id: string; status: string },
+    { rejectWithValue }
+  ) => {
+    try {
+      const expense = await expenseService.updateExpenseStatus(
+        id,
+        status as any
+      )
+      return expense
+    } catch (error: any) {
+      return rejectWithValue(error.message || "Failed to update expense status")
+    }
   }
 )
 
 export const fetchAnalytics = createAsyncThunk(
   "expenses/fetchAnalytics",
-  async (_, { getState }) => {
-    const { auth } = getState() as any
-    const response = await fetch("/api/analytics", {
-      headers: {
-        Authorization: `Bearer ${auth.token}`,
-      },
-    })
-
-    if (!response.ok) throw new Error("Failed to fetch analytics")
-    return response.json()
+  async (_, { rejectWithValue }) => {
+    try {
+      const analytics = await analyticsService.getAnalytics()
+      return analytics
+    } catch (error: any) {
+      return rejectWithValue(error.message || "Failed to fetch analytics")
+    }
   }
 )
 
