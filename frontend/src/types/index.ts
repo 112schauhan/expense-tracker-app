@@ -10,7 +10,7 @@ export interface Expense {
   amount: number
   category: string
   description: string
-  date: string
+  date: Date
   status: "PENDING" | "APPROVED" | "REJECTED"
   userId: string
   user: {
@@ -25,13 +25,13 @@ export interface CreateExpenseData {
   amount: number
   category: string
   description: string
-  date: string
+  date: Date
 }
 
 export interface ExpenseFilters {
   category?: string
-  startDate?: string
-  endDate?: string
+  startDate?: Date
+  endDate?: Date
   status?: string
 }
 
