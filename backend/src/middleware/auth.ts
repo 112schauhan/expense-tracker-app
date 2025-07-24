@@ -1,39 +1,154 @@
-import jwt from "jsonwebtoken"
-import { PrismaClient } from "@prisma/client"
 import { Response, NextFunction } from "express"
+import jwt from "jsonwebtoken"
+import { prisma } from "../lib/prisma"
+import { AuthRequest, JWTPayload } from "../types"
+import { Role } from "@prisma/client"
 
-const prisma = new PrismaClient()
-
-export const authenticateToken = async (
-  req: any,
+export const authenticate = async (
+  req: AuthRequest,
   res: Response,
   next: NextFunction
-) => {
-  const authHeader = req.headers["authorization"]
-  const token = authHeader && authHeader.split(" ")[1]
-
-  if (!token) return res.status(401).json({ error: "Access Token required" })
-
+): Promise<void> => {
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as any
+    const authHeader = req.headers.authorization
+
+    if (!authHeader) {
+      res.status(401).json({
+        success: false,
+        message: "Access token is required",
+      })
+      return
+    }
+
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.substring(7)
+      : authHeader
+
+    if (!token) {
+      res.status(401).json({
+        success: false,
+        message: "Access token is required",
+      })
+      return
+    }
+
+    const jwtSecret = process.env.JWT_SECRET
+    if (!jwtSecret) {
+      throw new Error("JWT_SECRET is not configured")
+    }
+
+    const decoded = jwt.verify(token, jwtSecret) as JWTPayload
+
     const user = await prisma.user.findUnique({
-      where: { id: decoded.id },
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        name: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
     })
 
     if (!user) {
-      return res.status(401).json({ error: "User not found" })
+      res.status(401).json({
+        success: false,
+        message: "User not found or token is invalid",
+      })
+      return
     }
 
     req.user = user
     next()
   } catch (error) {
-    return res.status(403).json({ error: "Invalid or expired token" })
+    if (error instanceof jwt.JsonWebTokenError) {
+      res.status(401).json({
+        success: false,
+        message: "Invalid or expired token",
+      })
+      return
+    }
+
+    console.error("Authentication error:", error)
+    res.status(500).json({
+      success: false,
+      message: "Internal server error during authentication",
+    })
   }
 }
 
-export const requireAdmin = (req: any, res: Response, next: NextFunction) => {
-  if (req.user?.role !== "ADMIN") {
-    return res.status(403).json({ error: "Admin access required" })
+export const authorize = (...roles: Role[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (!req.user) {
+      res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      })
+      return
+    }
+
+    if (!roles.includes(req.user.role)) {
+      res.status(403).json({
+        success: false,
+        message: "Insufficient permissions to access this resource",
+      })
+      return
+    }
+
+    next()
   }
+}
+
+export const optionalAuth = async (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  const authHeader = req.headers.authorization
+
+  if (!authHeader) {
+    next()
+    return
+  }
+
+  try {
+    const token = authHeader.startsWith("Bearer ")
+      ? authHeader.substring(7)
+      : authHeader
+
+    if (!token) {
+      next()
+      return
+    }
+
+    const jwtSecret = process.env.JWT_SECRET
+    if (!jwtSecret) {
+      next()
+      return
+    }
+
+    const decoded = jwt.verify(token, jwtSecret) as JWTPayload
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.userId },
+      select: {
+        id: true,
+        email: true,
+        password: true,
+        name: true,
+        role: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    })
+
+    if (user) {
+      req.user = user
+    }
+  } catch (error) {
+    console.log("Optional auth failed:", error)
+  }
+
   next()
 }

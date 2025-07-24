@@ -1,6 +1,6 @@
 import { Response } from "express"
 import { PrismaClient } from "@prisma/client"
-import { validateExpense } from "../utils/validation"
+import { validateExpense } from "../utils/logger"
 
 const prisma = new PrismaClient()
 
