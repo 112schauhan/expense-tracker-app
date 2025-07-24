@@ -29,6 +29,7 @@ const corsOptions = {
   origin: [
     "http://localhost:5173",
     "https://expense-tracker-app-le5e.vercel.app",
+    "https://expense-tracker-app-production-07bb.up.railway.app"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   credentials: true,
@@ -41,7 +42,7 @@ app.use(express.json({ limit: "10mb" }))
 app.use(express.urlencoded({ extended: true, limit: "10mb" }))
 
 app.set("trust proxy", 1)
-app.use("/api", routes)
+app.use("/", routes)
 
 app.use("/health", (req, res) => {
   res.json({
@@ -76,7 +77,7 @@ app.use(notFoundHandler)
 
 app.use(globalErrorHandler)
 
-const server = app.listen(PORT, () => {
+const server = app.listen(PORT || '0.0.0.0', () => {
   logger.info(`🚀 Server running on port ${PORT}`)
   logger.info(`📊 Health check: http://localhost:${PORT}/health`)
   logger.info(`🔗 API base URL: http://localhost:${PORT}/api`)
