@@ -1,9 +1,10 @@
+
 class ApiClient {
   private baseURL: string
   private defaultHeaders: Record<string, string>
 
   constructor() {
-    this.baseURL = process.env.REACT_APP_API_URL || "/api"
+    this.baseURL = import.meta.env.VITE_APP_URL || "/api"
     this.defaultHeaders = {
       "Content-Type": "application/json",
     }
@@ -11,43 +12,60 @@ class ApiClient {
 
   private getAuthHeaders(): Record<string, string> {
     const token = localStorage.getItem("token")
+    console.log("🔑 Token from localStorage:", token)
     return token ? { Authorization: `Bearer ${token}` } : {}
   }
 
-  private async handleResponse<T>(response: Response): Promise<T> {
+  private async handleResponse<T>(response: Response, url: string): Promise<T> {
+    console.log(`📡 ApiClient - Response for ${url}:`, {
+      status: response.status,
+      statusText: response.statusText,
+      ok: response.ok,
+    })
+
     if (!response.ok) {
       const contentType = response.headers.get("content-type")
+      let errorMessage = `HTTP ${response.status}: ${response.statusText}`
+      let errorData = null
 
-      if (contentType && contentType.includes("application/json")) {
-        const errorData = await response.json()
-        throw new ApiError(
-          errorData.error || errorData.message || "Request failed",
-          response.status,
-          errorData
-        )
-      } else {
-        throw new ApiError(
-          `HTTP ${response.status}: ${response.statusText}`,
-          response.status
+      try {
+        if (contentType && contentType.includes("application/json")) {
+          errorData = await response.json()
+          errorMessage = errorData.error || errorData.message || errorMessage
+          console.error("❌ ApiClient - Error response:", errorData)
+        }
+      } catch (parseError) {
+        console.error(
+          "❌ ApiClient - Could not parse error response:",
+          parseError
         )
       }
+
+      throw new ApiError(errorMessage, response.status, errorData)
     }
 
     const contentType = response.headers.get("content-type")
     if (contentType && contentType.includes("application/json")) {
-      return response.json()
+      const data = await response.json()
+      console.log(`✅ ApiClient - Success response for ${url}:`, data)
+      return data
     }
 
-    return response.text() as unknown as T
+    const textData = await response.text()
+    console.log(`✅ ApiClient - Text response for ${url}:`, textData)
+    return textData as unknown as T
   }
 
   async get<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
     const url = `${this.baseURL}${endpoint}`
+    const authHeaders = this.getAuthHeaders()
+    console.log("🔐 Headers:", { ...this.defaultHeaders, ...authHeaders }) // Debug log
+
     const config: RequestInit = {
       method: "GET",
       headers: {
         ...this.defaultHeaders,
-        ...this.getAuthHeaders(),
+        ...authHeaders,
         ...options.headers,
       },
       ...options,
@@ -55,7 +73,7 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config)
-      return this.handleResponse<T>(response)
+      return this.handleResponse<T>(response,url)
     } catch (error) {
       if (error instanceof ApiError) {
         throw error
@@ -83,7 +101,7 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config)
-      return this.handleResponse<T>(response)
+      return this.handleResponse<T>(response,url)
     } catch (error) {
       if (error instanceof ApiError) {
         throw error
@@ -111,7 +129,7 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config)
-      return this.handleResponse<T>(response)
+      return this.handleResponse<T>(response,url)
     } catch (error) {
       if (error instanceof ApiError) {
         throw error
@@ -139,7 +157,7 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config)
-      return this.handleResponse<T>(response)
+      return this.handleResponse<T>(response,url)
     } catch (error) {
       if (error instanceof ApiError) {
         throw error
@@ -162,7 +180,7 @@ class ApiClient {
 
     try {
       const response = await fetch(url, config)
-      return this.handleResponse<T>(response)
+      return this.handleResponse<T>(response,url)
     } catch (error) {
       if (error instanceof ApiError) {
         throw error

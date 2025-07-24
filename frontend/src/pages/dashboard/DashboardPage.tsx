@@ -32,9 +32,6 @@ import { useAppDispatch, useAppSelector } from "../../store"
 import { logout } from "../../store/authSlice"
 import { fetchExpenses, fetchAnalytics } from "../../store/expenseSlice"
 import ExpenseForm from "../../components/forms/ExpenseForm"
-// import CategoryChart from '../../components/charts/CategoryChart';
-// import MonthlyChart from '../../components/charts/MonthlyChart';
-// import StatsCards from '../../components/charts/StatsCards';
 import ExpenseList from "../../components/ExpenseList"
 import StatsCards from "../../components/charts/StatsCards"
 import CategoryChart from "../../components/charts/CategoryChart"

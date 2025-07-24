@@ -44,12 +44,7 @@ const LoginPage: React.FC = () => {
     setIsSubmitting(true)
 
     try {
-      const result = await dispatch(
-        login({
-          email: email.trim(),
-          password: password.trim(),
-        })
-      )
+      const result = await await dispatch(login({ email, password })).unwrap()
 
       if (login.fulfilled.match(result)) {
         console.log("Login successful")
