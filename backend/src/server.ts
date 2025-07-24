@@ -35,7 +35,6 @@ const corsOptions = {
   optionsSuccessStatus: 200,
 }
 app.use(cors(corsOptions))
-app.options('*', cors(corsOptions));
 const morganFormat = process.env.NODE_ENV === "production" ? "combined" : "dev"
 app.use(morgan(morganFormat, { stream: morganStream }))
 app.use(express.json({ limit: "10mb" }))
