@@ -25,24 +25,15 @@ app.use(
   })
 )
 
-const whitelist = [
-  "http://localhost:5173", // Local frontend origin
-  "https://expense-tracker-app-le5e.vercel.app", // Deployed frontend
-]
-
 const corsOptions = {
-  origin: function (origin: any, callback: any) {
-    if (!origin || whitelist.indexOf(origin) !== -1) {
-      callback(null, true)
-    } else {
-      callback(new Error("CORS policy does not allow this origin"))
-    }
-  },
+  origin: [
+    "http://localhost:5173",
+    "https://expense-tracker-app-le5e.vercel.app",
+  ],
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"],
   credentials: true,
   optionsSuccessStatus: 200,
 }
-
 app.use(cors(corsOptions))
 app.options('*', cors(corsOptions));
 const morganFormat = process.env.NODE_ENV === "production" ? "combined" : "dev"
