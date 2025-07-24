@@ -19,38 +19,36 @@ model User {
   password  String
   name      String
   role      Role     @default(EMPLOYEE)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
   
   // Relations
-  expenses         Expense[] @relation("UserExpenses")
-  approvedExpenses Expense[] @relation("ApprovedBy")
+  expenses         Expense[]
   
   @@map("users")
 }
 
 model Expense {
   id          String        @id @default(uuid())
-  userId      String        @map("user_id")
-  amount      Decimal       @db.Decimal(10, 2)
-  category    String
+  amount      Float
+  category    ExpenseCategory
   description String?
   date        DateTime
   status      ExpenseStatus @default(PENDING)
-  approvedBy  String?       @map("approved_by")
-  receipt     String?       // URL to receipt file (bonus feature)
-  createdAt   DateTime      @default(now()) @map("created_at")
-  updatedAt   DateTime      @updatedAt @map("updated_at")
+  receiptUrl  String?
+  rejectionReason String?
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
   
   // Relations
-  user     User  @relation("UserExpenses", fields: [userId], references: [id], onDelete: Cascade)
-  approver User? @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  userId      String
+  user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   @@map("expenses")
   @@index([userId])
+  @@index([status])
   @@index([category])
   @@index([date])
-  @@index([status])
 }
 
 enum Role {
@@ -62,4 +60,18 @@ enum ExpenseStatus {
   PENDING
   APPROVED
   REJECTED
+}
+
+enum ExpenseCategory {
+  FOOD
+  TRANSPORT
+  ACCOMMODATION
+  OFFICE_SUPPLIES
+  SOFTWARE
+  TRAINING
+  MARKETING
+  TRAVEL
+  ENTERTAINMENT
+  UTILITIES
+  OTHER
 }
