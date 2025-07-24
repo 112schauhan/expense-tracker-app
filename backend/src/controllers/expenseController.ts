@@ -13,6 +13,7 @@ import {
   MonthlyAnalytics,
 } from "../types"
 import { ExpenseStatus, Role } from "@prisma/client"
+import { parse } from "path"
 
 export const createExpense = async (
   req: AuthRequest,
@@ -144,7 +145,7 @@ export const getExpenses = async (
         createdAt: "desc",
       },
       skip,
-      take,
+      take: parseInt(take.toString()),
     })
 
     const totalPages = Math.ceil(total / limit)
@@ -523,26 +524,52 @@ export const getExpenseAnalytics = async (
     })
 
     // Get monthly statistics
-    const monthlyStats = (await prisma.$queryRaw`
-      SELECT 
-        TO_CHAR(date, 'YYYY-MM') as month,
-        COUNT(*)::int as count,
-        SUM(amount)::float as "totalAmount"
-      FROM expenses 
-      WHERE ${userId ? `"userId" = ${userId} AND` : ""} 
-        ${dateFrom ? `date >= ${dateFrom} AND` : ""} 
-        ${dateTo ? `date <= ${dateTo} AND` : ""}
-        ${
-          req.user.role === Role.EMPLOYEE
-            ? `"userId" = '${req.user.id}' AND`
-            : ""
-        }
-        true
-      GROUP BY TO_CHAR(date, 'YYYY-MM')
-      ORDER BY month DESC
-      LIMIT 12
-    `) as any[]
+    let monthlyStats: any[] = []
+    try {
+      // Get all expenses for the date range and group them manually
+      const expensesForMonthly = await prisma.expense.findMany({
+        where,
+        select: {
+          date: true,
+          amount: true,
+        },
+        orderBy: {
+          date: "desc",
+        },
+      })
 
+      // Group by month manually
+      const monthlyMap = new Map<
+        string,
+        { count: number; totalAmount: number }
+      >()
+
+      expensesForMonthly.forEach((expense) => {
+        const monthKey = expense.date.toISOString().substring(0, 7) // YYYY-MM format
+        const existing = monthlyMap.get(monthKey) || {
+          count: 0,
+          totalAmount: 0,
+        }
+        monthlyMap.set(monthKey, {
+          count: existing.count + 1,
+          totalAmount: existing.totalAmount + expense.amount,
+        })
+      })
+
+      // Convert to array and sort by month (latest first)
+      monthlyStats = Array.from(monthlyMap.entries())
+        .map(([month, data]) => ({
+          month,
+          count: data.count,
+          totalAmount: data.totalAmount,
+        }))
+        .sort((a, b) => b.month.localeCompare(a.month))
+        .slice(0, 12) // Limit to last 12 months
+    } catch (error) {
+      console.error("Monthly stats processing error:", error)
+      // Fallback to empty array if processing fails
+      monthlyStats = []
+    }
     // Get top expenses
     const topExpenses = await prisma.expense.findMany({
       where,

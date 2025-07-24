@@ -1,8 +1,11 @@
 import { Request } from 'express';
 import { User, Role, ExpenseStatus, ExpenseCategory } from '@prisma/client';
 
+// Auth Types
 export interface AuthRequest extends Request {
   user?: User;
+  validatedBody?: any;
+  validatedQuery?: any;
 }
 
 export interface LoginCredentials {
@@ -23,6 +26,7 @@ export interface JWTPayload {
   role: Role;
 }
 
+// Expense Types
 export interface CreateExpenseData {
   amount: number;
   category: ExpenseCategory;
@@ -54,6 +58,7 @@ export interface ExpenseApprovalData {
   rejectionReason?: string;
 }
 
+// Analytics Types
 export interface ExpenseAnalytics {
   totalExpenses: number;
   totalAmount: number;
@@ -96,6 +101,7 @@ export interface ExpenseWithUser {
   };
 }
 
+// API Response Types
 export interface ApiResponse<T = any> {
   success: boolean;
   message?: string;
@@ -115,16 +121,19 @@ export interface PaginatedResponse<T> {
   };
 }
 
+// Error Types
 export interface ApiError extends Error {
   statusCode: number;
   isOperational: boolean;
 }
 
+// Validation Types
 export interface ValidationError {
   field: string;
   message: string;
 }
 
+// Export Prisma types
 export { 
   User, 
   Expense, 
