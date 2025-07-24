@@ -61,33 +61,41 @@ app.get("/", (req, res) => {
   })
 })
 
+app.use((req, res, next) => {
+  res.status(404).json({
+    success: false,
+    message: `Route ${req.method} ${req.originalUrl} not found`,
+  })
+})
+
 app.use(notFoundHandler)
 
 app.use(globalErrorHandler)
 
 const server = app.listen(PORT, () => {
-  logger.info(`🚀 Server running on port ${PORT}`);
-  logger.info(`📊 Health check: http://localhost:${PORT}/health`);
-  logger.info(`🔗 API base URL: http://localhost:${PORT}/api`);
-  logger.info(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
-});
-
+  logger.info(`🚀 Server running on port ${PORT}`)
+  logger.info(`📊 Health check: http://localhost:${PORT}/health`)
+  logger.info(`🔗 API base URL: http://localhost:${PORT}/api`)
+  logger.info(`🌍 Environment: ${process.env.NODE_ENV || "development"}`)
+})
 
 const gracefulShutdown = (signal: string) => {
-  logger.info(`${signal} received. Starting graceful shutdown...`);
-  
+  logger.info(`${signal} received. Starting graceful shutdown...`)
+
   server.close(() => {
-    logger.info('HTTP server closed');
-    process.exit(0);
-  });
+    logger.info("HTTP server closed")
+    process.exit(0)
+  })
 
   setTimeout(() => {
-    logger.error('Could not close connections in time, forcefully shutting down');
-    process.exit(1);
-  }, 30000);
-};
+    logger.error(
+      "Could not close connections in time, forcefully shutting down"
+    )
+    process.exit(1)
+  }, 30000)
+}
 
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"))
+process.on("SIGINT", () => gracefulShutdown("SIGINT"))
 
-export default app;
+export default app
