@@ -3,10 +3,7 @@ import {
   Container,
   Typography,
   Box,
-  Grid,
   Paper,
-  Card,
-  CardContent,
   Button,
   AppBar,
   Toolbar,
@@ -19,6 +16,7 @@ import {
   Fab,
   useTheme,
   useMediaQuery,
+  Alert,
 } from "@mui/material"
 import {
   Add,
@@ -28,36 +26,60 @@ import {
   NotificationsNone,
   Refresh,
 } from "@mui/icons-material"
-import { useAppDispatch, useAppSelector } from "../../store"
+import { useDispatch, useSelector } from "react-redux"
 import { logout } from "../../store/authSlice"
-import { fetchExpenses, fetchAnalytics } from "../../store/expenseSlice"
+import { fetchExpenses } from "../../store/expenseSlice"
+import { getExpenseAnalytics } from "../../services/analyticsService"
 import ExpenseForm from "../../components/forms/ExpenseForm"
 import ExpenseList from "../../components/ExpenseList"
 import StatsCards from "../../components/charts/StatsCards"
 import CategoryChart from "../../components/charts/CategoryChart"
 import MonthlyChart from "../../components/charts/MonthlyChart"
+import { type RootState, type AppDispatch } from "../../store"
+import { type ExpenseAnalytics } from "../../services/types"
 
 const DashboardPage: React.FC = () => {
   const [showExpenseForm, setShowExpenseForm] = useState(false)
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null)
   const [lastRefresh, setLastRefresh] = useState<Date>(new Date())
+  const [analytics, setAnalytics] = useState<ExpenseAnalytics | null>(null)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null)
 
-  const dispatch = useAppDispatch()
+  const dispatch = useDispatch<AppDispatch>()
   const theme = useTheme()
   const isMobile = useMediaQuery(theme.breakpoints.down("md"))
 
-  const { user } = useAppSelector((state) => state.auth)
-  const { expenses, analytics, isLoading } = useAppSelector(
-    (state) => state.expenses
-  )
+  const { user } = useSelector((state: RootState) => state.auth)
+  const { expenses, loading, error } = useSelector((state: RootState) => state.expenses)
 
   // Load data on component mount
   useEffect(() => {
-    dispatch(fetchExpenses({}))
+    dispatch(fetchExpenses())
     if (user?.role === "ADMIN") {
-      dispatch(fetchAnalytics())
+      loadAnalytics()
     }
   }, [dispatch, user?.role])
+
+  const loadAnalytics = async () => {
+    if (user?.role !== "ADMIN") return
+    
+    setAnalyticsLoading(true)
+    setAnalyticsError(null)
+    try {
+      const response = await getExpenseAnalytics()
+      if (response.success) {
+        setAnalytics(response.data)
+      } else {
+        setAnalyticsError("Failed to load analytics")
+      }
+    } catch (error) {
+      setAnalyticsError("Failed to load analytics")
+      console.error("Analytics error:", error)
+    } finally {
+      setAnalyticsLoading(false)
+    }
+  }
 
   const handleLogout = () => {
     dispatch(logout())
@@ -73,9 +95,9 @@ const DashboardPage: React.FC = () => {
   }
 
   const handleRefresh = () => {
-    dispatch(fetchExpenses({}))
+    dispatch(fetchExpenses())
     if (user?.role === "ADMIN") {
-      dispatch(fetchAnalytics())
+      loadAnalytics()
     }
     setLastRefresh(new Date())
   }
@@ -145,7 +167,7 @@ const DashboardPage: React.FC = () => {
             aria-haspopup="true"
           >
             <Avatar sx={{ width: 32, height: 32, bgcolor: "secondary.main" }}>
-              {user?.name.charAt(0).toUpperCase()}
+              {user?.name?.charAt(0).toUpperCase()}
             </Avatar>
           </IconButton>
 
@@ -174,7 +196,7 @@ const DashboardPage: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Container maxWidth={false} sx={{ mt: 4, mb: 4, px: { xs: 2, sm: 3, md: 4 } }}>
         {/* Header Section */}
         <Box
           display="flex"
@@ -196,7 +218,7 @@ const DashboardPage: React.FC = () => {
               variant="outlined"
               startIcon={<Refresh />}
               onClick={handleRefresh}
-              disabled={isLoading}
+              disabled={loading}
             >
               Refresh
             </Button>
@@ -213,148 +235,84 @@ const DashboardPage: React.FC = () => {
           </Box>
         </Box>
 
+        {/* Error Alert */}
+        {error && (
+          <Alert severity="error" sx={{ mb: 3 }}>
+            {error}
+          </Alert>
+        )}
+
         {/* Stats Cards */}
-        <Grid container spacing={3} mb={4}>
+        <Box mb={4}>
           <StatsCards stats={stats} userRole={user?.role || "EMPLOYEE"} />
-        </Grid>
+        </Box>
 
-        {/* Charts Section - Admin Only */}
-        {user?.role === "ADMIN" && analytics && (
-          <Grid container spacing={3} mb={4}>
-            <Box width="100%" mb={2}>
-              <Typography
-                variant="h5"
-                gutterBottom
-                sx={{ display: "flex", alignItems: "center" }}
-              >
-                <TrendingUp sx={{ mr: 1 }} />
-                Analytics Overview
-              </Typography>
-            </Box>
+        {/* Analytics Section - Admin Only */}
+        {user?.role === "ADMIN" && (
+          <Box mb={4}>
+            <Typography
+              variant="h5"
+              gutterBottom
+              sx={{ display: "flex", alignItems: "center", mb: 3 }}
+            >
+              <TrendingUp sx={{ mr: 1 }} />
+              Analytics Overview
+            </Typography>
 
-            <Box
-              sx={{
-                width: { xs: "100%", lg: "50%" },
-                mb: { xs: 3, lg: 0 },
-                pr: { lg: 2 },
+            {analyticsError && (
+              <Alert severity="error" sx={{ mb: 2 }}>
+                {analyticsError}
+              </Alert>
+            )}
+
+            <Box 
+              sx={{ 
+                display: "flex", 
+                flexDirection: { xs: "column", lg: "row" },
+                gap: 3,
+                minHeight: "500px"
               }}
             >
-              <CategoryChart data={analytics.categoryBreakdown} />
-            </Box>
+              {/* Category Breakdown */}
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                {analyticsLoading ? (
+                  <Paper sx={{ p: 3, height: "500px", display: "flex", justifyContent: "center", alignItems: "center" }}>
+                    <Typography>Loading analytics...</Typography>
+                  </Paper>
+                ) : analytics?.expensesByCategory ? (
+                  <CategoryChart data={analytics.expensesByCategory} />
+                ) : (
+                  <Paper sx={{ p: 3, height: "500px", display: "flex", justifyContent: "center", alignItems: "center" }}>
+                    <Typography color="textSecondary">No category data available</Typography>
+                  </Paper>
+                )}
+              </Box>
 
-            <Box
-              sx={{
-                width: { xs: "100%", lg: "50%" },
-                mb: { xs: 3, lg: 0 },
-                pr: { lg: 2 },
-              }}
-            >
-              <MonthlyChart data={analytics.monthlyTrends} />
+              {/* Monthly Trends */}
+              <Box sx={{ flex: 1, minWidth: 0 }}>
+                {analyticsLoading ? (
+                  <Paper sx={{ p: 3, height: "500px", display: "flex", justifyContent: "center", alignItems: "center" }}>
+                    <Typography>Loading analytics...</Typography>
+                  </Paper>
+                ) : analytics?.expensesByMonth ? (
+                  <MonthlyChart data={analytics.expensesByMonth} />
+                ) : (
+                  <Paper sx={{ p: 3, height: "500px", display: "flex", justifyContent: "center", alignItems: "center" }}>
+                    <Typography color="textSecondary">No monthly data available</Typography>
+                  </Paper>
+                )}
+              </Box>
             </Box>
-
-            {/* Additional Analytics Cards */}
-            <Grid width="100%" mb={2}>
-              <Paper sx={{ p: 3 }}>
-                <Typography variant="h6" gutterBottom>
-                  Quick Insights
-                </Typography>
-                <Grid container spacing={2}>
-                  <Box
-                    sx={{
-                      width: { xs: "100%", lg: "50%" },
-                      mb: { xs: 3, lg: 0 },
-                      pr: { lg: 2 },
-                    }}
-                  >
-                    <Card variant="outlined">
-                      <CardContent sx={{ textAlign: "center" }}>
-                        <Typography color="textSecondary" gutterBottom>
-                          Avg Expense
-                        </Typography>
-                        <Typography variant="h5">
-                          $
-                          {stats.total > 0
-                            ? (stats.total / expenses.length).toFixed(2)
-                            : "0.00"}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Box>
-                  <Box
-                    sx={{
-                      width: { xs: "100%", lg: "50%" },
-                      mb: { xs: 3, lg: 0 },
-                      pr: { lg: 2 },
-                    }}
-                  >
-                    <Card variant="outlined">
-                      <CardContent sx={{ textAlign: "center" }}>
-                        <Typography color="textSecondary" gutterBottom>
-                          This Month
-                        </Typography>
-                        <Typography variant="h5">
-                          {stats.thisMonthCount}
-                        </Typography>
-                        <Typography variant="caption" color="textSecondary">
-                          expenses
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Box>
-                  <Box
-                    sx={{
-                      width: { xs: "100%", lg: "50%" },
-                      mb: { xs: 3, lg: 0 },
-                      pr: { lg: 2 },
-                    }}
-                  >
-                    <Card variant="outlined">
-                      <CardContent sx={{ textAlign: "center" }}>
-                        <Typography color="textSecondary" gutterBottom>
-                          Approval Rate
-                        </Typography>
-                        <Typography variant="h5" color="success.main">
-                          {expenses.length > 0
-                            ? Math.round(
-                                (stats.approved / expenses.length) * 100
-                              )
-                            : 0}
-                          %
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Box>
-                  <Box
-                    sx={{
-                      width: { xs: "100%", lg: "50%" },
-                      mb: { xs: 3, lg: 0 },
-                      pr: { lg: 2 },
-                    }}
-                  >
-                    <Card variant="outlined">
-                      <CardContent sx={{ textAlign: "center" }}>
-                        <Typography color="textSecondary" gutterBottom>
-                          Monthly Spend
-                        </Typography>
-                        <Typography variant="h5">
-                          ${stats.monthlyTotal.toFixed(2)}
-                        </Typography>
-                      </CardContent>
-                    </Card>
-                  </Box>
-                </Grid>
-              </Paper>
-            </Grid>
-          </Grid>
+          </Box>
         )}
 
         {/* Recent Expenses Section */}
-        <Grid width="100%" mb={2}>
+        <Box mb={2}>
           <Typography variant="h5" gutterBottom>
             {user?.role === "ADMIN" ? "All Expenses" : "My Expenses"}
           </Typography>
           <ExpenseList />
-        </Grid>
+        </Box>
 
         {/* Floating Action Button for Mobile */}
         {isMobile && (
