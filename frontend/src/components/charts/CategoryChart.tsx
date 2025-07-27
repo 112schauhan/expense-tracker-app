@@ -7,9 +7,9 @@ import {
   useTheme,
   Card,
   CardContent,
-  Chip,
   Stack,
   Divider,
+  CircularProgress,
 } from "@mui/material"
 import {
   PieChartOutlined,
@@ -20,50 +20,132 @@ import { type CategoryAnalytics } from "../../services/types"
 
 interface CategoryChartProps {
   data: CategoryAnalytics[]
+  loading?: boolean
 }
 
-const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
+const CategoryChart: React.FC<CategoryChartProps> = ({
+  data,
+  loading = false,
+}) => {
   const theme = useTheme()
 
-  const categoryConfig = {
-    FOOD: { color: "#FF6B6B", icon: "🍽️", label: "Food" },
-    TRANSPORT: { color: "#4ECDC4", icon: "🚗", label: "Transport" },
-    ACCOMMODATION: { color: "#45B7D1", icon: "🏨", label: "Accommodation" },
-    OFFICE_SUPPLIES: { color: "#96CEB4", icon: "📎", label: "Office Supplies" },
-    SOFTWARE: { color: "#FFEAA7", icon: "💻", label: "Software" },
-    TRAINING: { color: "#DDA0DD", icon: "📚", label: "Training" },
-    MARKETING: { color: "#98D8C8", icon: "📢", label: "Marketing" },
-    TRAVEL: { color: "#F7DC6F", icon: "✈️", label: "Travel" },
-    ENTERTAINMENT: { color: "#AED6F1", icon: "🎭", label: "Entertainment" },
-    UTILITIES: { color: "#D5DBDB", icon: "⚡", label: "Utilities" },
-    OTHER: { color: "#FFA07A", icon: "📋", label: "Other" },
-  }
+  const categoryConfig = useMemo(
+    () => ({
+      FOOD: { color: "#FF6B6B", icon: "🍽️", label: "Food" },
+      TRANSPORT: { color: "#4ECDC4", icon: "🚗", label: "Transport" },
+      ACCOMMODATION: { color: "#45B7D1", icon: "🏨", label: "Accommodation" },
+      OFFICE_SUPPLIES: {
+        color: "#96CEB4",
+        icon: "📎",
+        label: "Office Supplies",
+      },
+      SOFTWARE: { color: "#FFEAA7", icon: "💻", label: "Software" },
+      TRAINING: { color: "#DDA0DD", icon: "📚", label: "Training" },
+      MARKETING: { color: "#98D8C8", icon: "📢", label: "Marketing" },
+      TRAVEL: { color: "#F7DC6F", icon: "✈️", label: "Travel" },
+      ENTERTAINMENT: { color: "#AED6F1", icon: "🎭", label: "Entertainment" },
+      UTILITIES: { color: "#D5DBDB", icon: "⚡", label: "Utilities" },
+      OTHER: { color: "#FFA07A", icon: "📋", label: "Other" },
+    }),
+    []
+  )
 
-  const chartData = useMemo(() => {
-    return data.map((item, index) => ({
-      id: index,
-      value: item.totalAmount,
-      label: categoryConfig[item.category]?.label || item.category,
-      count: item.count,
-      color: categoryConfig[item.category]?.color || theme.palette.primary.main,
-    }))
-  }, [data, theme.palette.primary.main])
+  const processedData = useMemo(() => {
+    if (!data || data.length === 0) return []
+
+    console.log("🔍 CategoryChart - Raw data:", data)
+
+    // Filter out categories with zero amounts and ensure proper data types
+    const processed = data
+      .filter((item) => {
+        const amount = Number(item.totalAmount)
+        const isValid = amount > 0 && !isNaN(amount)
+        if (!isValid) {
+          console.warn(`❌ Filtering out invalid category: ${item.category}`, {
+            totalAmount: item.totalAmount,
+            type: typeof item.totalAmount,
+            converted: amount,
+          })
+        }
+        return isValid
+      })
+      .map((item, index) => {
+        const config =
+          categoryConfig[item.category as keyof typeof categoryConfig]
+        const amount = Number(item.totalAmount) || 0
+        const count = Number(item.count) || 0
+        const percentage = Number(item.percentage) || 0
+
+        const processed = {
+          id: index,
+          value: amount,
+          label: config?.label || item.category,
+          category: item.category,
+          count: count,
+          percentage: percentage,
+          color: config?.color || theme.palette.primary.main,
+          icon: config?.icon || "📋",
+        }
+
+        console.log(`✅ Processed category ${item.category}:`, processed)
+        return processed
+      })
+      .sort((a, b) => b.value - a.value) // Sort by amount descending
+
+    // Calculate color intensities based on percentage
+    const maxPercentage = Math.max(...processed.map((item) => item.percentage))
+    const processedWithIntensity = processed.map((item) => {
+      // Calculate opacity based on percentage (min 0.3, max 1.0)
+      const intensityRatio =
+        maxPercentage > 0 ? item.percentage / maxPercentage : 1
+      const opacity = Math.max(0.3, Math.min(1.0, 0.4 + intensityRatio * 0.6))
+
+      // Convert hex color to rgba with calculated opacity
+      const hexToRgba = (hex: string, alpha: number) => {
+        const r = parseInt(hex.slice(1, 3), 16)
+        const g = parseInt(hex.slice(3, 5), 16)
+        const b = parseInt(hex.slice(5, 7), 16)
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`
+      }
+
+      return {
+        ...item,
+        colorWithOpacity: hexToRgba(item.color, opacity),
+        colorIntensity: opacity,
+      }
+    })
+
+    console.log(
+      "📊 Final processed data with intensities:",
+      processedWithIntensity
+    )
+    return processedWithIntensity
+  }, [data, categoryConfig, theme.palette.primary.main])
 
   const totals = useMemo(() => {
-    const totalAmount = data.reduce((sum, item) => sum + item.totalAmount, 0)
-    const totalCount = data.reduce((sum, item) => sum + item.count, 0)
+    if (!processedData.length) {
+      return {
+        totalAmount: 0,
+        totalCount: 0,
+        averageAmount: 0,
+        largestCategory: null,
+        categoryCount: 0,
+      }
+    }
+
+    const totalAmount = processedData.reduce((sum, item) => sum + item.value, 0)
+    const totalCount = processedData.reduce((sum, item) => sum + item.count, 0)
     const averageAmount = totalCount > 0 ? totalAmount / totalCount : 0
-    const largestCategory = data.reduce(
-      (max, item) => (item.totalAmount > max.totalAmount ? item : max),
-      data[0] || { category: "FOOD", totalAmount: 0, count: 0, percentage: 0 }
-    )
+    const largestCategory = processedData[0]
 
-    return { totalAmount, totalCount, averageAmount, largestCategory }
-  }, [data])
-
-  const sortedData = useMemo(() => {
-    return [...data].sort((a, b) => b.totalAmount - a.totalAmount)
-  }, [data])
+    return {
+      totalAmount,
+      totalCount,
+      averageAmount,
+      largestCategory,
+      categoryCount: processedData.length,
+    }
+  }, [processedData])
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -73,7 +155,28 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
     }).format(amount)
   }
 
-  if (!data || data.length === 0) {
+  if (loading) {
+    return (
+      <Paper
+        sx={{
+          p: 3,
+          height: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <Box textAlign="center">
+          <CircularProgress size={48} sx={{ mb: 2 }} />
+          <Typography variant="h6" color="textSecondary">
+            Loading category data...
+          </Typography>
+        </Box>
+      </Paper>
+    )
+  }
+
+  if (!data || data.length === 0 || processedData.length === 0) {
     return (
       <Paper
         sx={{
@@ -122,7 +225,7 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
           <PieChart
             series={[
               {
-                data: chartData,
+                data: processedData,
                 highlightScope: { fade: "global", highlight: "item" },
                 faded: {
                   innerRadius: 30,
@@ -167,69 +270,104 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
           </Typography>
 
           <Stack spacing={2} sx={{ maxHeight: 280, overflowY: "auto" }}>
-            {sortedData.map((item) => {
-              const config = categoryConfig[item.category]
-
-              return (
-                <Card
-                  key={item.category}
-                  variant="outlined"
-                  sx={{
-                    borderLeft: `4px solid ${
-                      config?.color || theme.palette.primary.main
-                    }`,
-                    transition: "all 0.2s ease",
-                    "&:hover": {
-                      transform: "translateX(4px)",
-                      boxShadow: 2,
+            {processedData.map((item) => (
+              <Card
+                key={item.category}
+                variant="outlined"
+                sx={{
+                  borderLeft: `4px solid ${item.color}`,
+                  transition: "all 0.3s ease",
+                  cursor: "pointer",
+                  position: "relative",
+                  overflow: "hidden",
+                  "&:hover": {
+                    boxShadow: 3,
+                    borderColor: "grey.300",
+                    "& .category-icon": {
+                      transform: "scale(1.1)",
+                      backgroundColor: "white",
+                      color: item.color,
                     },
+                    "& .category-amount": {
+                      color: "primary.dark",
+                    },
+                    "& .category-label": {
+                      color: "white",
+                    },
+                    "& .category-details": {
+                      color: "rgba(255, 255, 255, 0.8)",
+                    },
+                  },
+                }}
+                title={`${item.label}: ${formatCurrency(
+                  item.value
+                )} (${item.percentage.toFixed(1)}%) • ${item.count} expense${
+                  item.count !== 1 ? "s" : ""
+                }`}
+              >
+                <Box
+                  sx={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    background: `linear-gradient(to right, ${item.colorWithOpacity} ${item.percentage}%, transparent ${item.percentage}%)`,
+                    zIndex: 0,
                   }}
-                >
-                  <CardContent sx={{ py: 2 }}>
-                    <Box
-                      display="flex"
-                      justifyContent="space-between"
-                      alignItems="center"
-                    >
-                      <Box display="flex" alignItems="center" gap={1}>
-                        <Typography variant="h6" sx={{ fontSize: "1.2rem" }}>
-                          {config?.icon || "📋"}
-                        </Typography>
-                        <Box>
-                          <Typography variant="body1" fontWeight="medium">
-                            {config?.label || item.category}
-                          </Typography>
-                          <Typography variant="caption" color="textSecondary">
-                            {item.count} expense{item.count !== 1 ? "s" : ""}
-                          </Typography>
-                        </Box>
+                />
+                <CardContent sx={{ py: 2, px: 2, "&:last-child": { pb: 2 } }}>
+                  <Box
+                    display="flex"
+                    justifyContent="space-between"
+                    alignItems="center"
+                  >
+                    <Box display="flex" alignItems="center" gap={1.5}>
+                      <Box
+                        sx={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: 1,
+                          backgroundColor: item.color,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          fontSize: "1rem",
+                        }}
+                      >
+                        {item.icon}
                       </Box>
-
-                      <Box textAlign="right">
-                        <Typography
-                          variant="h6"
-                          fontWeight="bold"
-                          color="primary"
-                        >
-                          {formatCurrency(item.totalAmount)}
+                      <Box>
+                        <Typography variant="body1" fontWeight="medium">
+                          {item.label}
                         </Typography>
-                        <Chip
-                          label={`${item.percentage.toFixed(1)}%`}
-                          size="small"
-                          sx={{
-                            backgroundColor:
-                              config?.color || theme.palette.primary.main,
-                            color: "white",
-                            fontWeight: "bold",
-                            fontSize: "0.75rem",
-                          }}
-                        />
+                        <Typography variant="caption" color="textSecondary">
+                          {item.count} expense{item.count !== 1 ? "s" : ""} •{" "}
+                          {item.percentage.toFixed(1)}% of total
+                        </Typography>
                       </Box>
                     </Box>
-                  </CardContent>
-                </Card>
-              )
-            })}
+
+                    <Box textAlign="right">
+                      <Typography
+                        variant="h6"
+                        fontWeight="bold"
+                        color="primary"
+                        sx={{ fontSize: "1.1rem" }}
+                      >
+                        {formatCurrency(item.value)}
+                      </Typography>
+                      <Typography variant="caption" color="textSecondary">
+                        Avg:{" "}
+                        {formatCurrency(
+                          item.count > 0 ? item.value / item.count : 0
+                        )}
+                      </Typography>
+                    </Box>
+                  </Box>
+                </CardContent>
+              </Card>
+            ))}
           </Stack>
         </Box>
 
@@ -277,14 +415,13 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
             >
               <Card variant="outlined" sx={{ textAlign: "center", p: 2 }}>
                 <Typography variant="caption" color="textSecondary">
-                  Largest Category
+                  Top Category
                 </Typography>
                 <Typography variant="h6" fontWeight="medium">
-                  {categoryConfig[totals.largestCategory.category]?.label ||
-                    totals.largestCategory.category}
+                  {totals.largestCategory?.label}
                 </Typography>
                 <Typography variant="body2" color="primary">
-                  {formatCurrency(totals.largestCategory.totalAmount)}
+                  {formatCurrency(totals.largestCategory?.value || 0)}
                 </Typography>
               </Card>
             </Box>
@@ -300,7 +437,7 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
                   Categories
                 </Typography>
                 <Typography variant="h5" color="info.main" fontWeight="bold">
-                  {data.length}
+                  {totals.categoryCount}
                 </Typography>
               </Card>
             </Box>
@@ -325,7 +462,7 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
       </Box>
 
       {/* Trend Indicator */}
-      {data.length > 0 && (
+      {totals.largestCategory && (
         <Box
           sx={{
             mt: 3,
@@ -344,16 +481,18 @@ const CategoryChart: React.FC<CategoryChartProps> = ({ data }) => {
           </Box>
 
           <Typography variant="body2" color="textSecondary">
-            {categoryConfig[totals.largestCategory.category]?.label ||
-              totals.largestCategory.category}{" "}
-            represents the highest spending category with{" "}
+            <strong>{totals.largestCategory.label}</strong> represents your
+            highest spending category with{" "}
             <strong>{totals.largestCategory.percentage.toFixed(1)}%</strong> of
-            total expenses.
-            {data.length > 1 && (
+            total expenses ({formatCurrency(totals.largestCategory.value)}).
+            {totals.categoryCount > 1 && (
               <>
                 {" "}
-                The average expense amount across all categories is{" "}
-                <strong>{formatCurrency(totals.averageAmount)}</strong>.
+                Your expenses are spread across{" "}
+                <strong>{totals.categoryCount} categories</strong> with an
+                average of{" "}
+                <strong>{formatCurrency(totals.averageAmount)}</strong> per
+                expense.
               </>
             )}
           </Typography>

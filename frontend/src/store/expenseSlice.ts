@@ -116,6 +116,9 @@ const expenseSlice = createSlice({
         limit: 10,
       };
     },
+    clearError(state) {
+      state.error = null;
+    },
   },
   extraReducers: (builder) => {
     builder
@@ -148,6 +151,10 @@ const expenseSlice = createSlice({
         if (action.payload.success && action.payload.data) {
           // Add newly created expense to the list (optimistic update)
           state.expenses.unshift(action.payload.data);
+          // Update pagination total if available
+          if (state.paginated?.pagination) {
+            state.paginated.pagination.total += 1;
+          }
         } else {
           state.error = action.payload.message || "Failed to create expense";
         }
@@ -187,9 +194,8 @@ const expenseSlice = createSlice({
       .addCase(deleteExpense.fulfilled, (state, action) => {
         state.loading = false;
         if (action.payload.success) {
-          // Remove expense from list
-          // As id is only passed to thunk, remove from current list by id slice
-          // Not passing id here so do nothing, app can re-fetch or remove manually
+          // Note: Since we don't have the ID here, we'll let the component handle re-fetching
+          // Alternatively, you could modify the thunk to return the deleted expense ID
         } else {
           state.error = action.payload.message || "Failed to delete expense";
         }
@@ -223,5 +229,5 @@ const expenseSlice = createSlice({
   },
 });
 
-export const { setFilters, clearFilters } = expenseSlice.actions;
+export const { setFilters, clearFilters, clearError } = expenseSlice.actions;
 export default expenseSlice.reducer;

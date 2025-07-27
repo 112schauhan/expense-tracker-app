@@ -36,12 +36,14 @@ export const createExpense = async (
       receiptUrl,
     }: CreateExpenseData = req.body
 
+    const expenseDate = new Date(date + "T00:00:00.000Z")
+
     const expense = await prisma.expense.create({
       data: {
         amount,
         category,
         description: description || null,
-        date: new Date(date),
+        date: expenseDate,
         receiptUrl: receiptUrl || null,
         userId: req.user.id,
       },
@@ -115,10 +117,10 @@ export const getExpenses = async (
     if (dateFrom || dateTo) {
       where.date = {}
       if (dateFrom) {
-        where.date.gte = new Date(dateFrom)
+        where.date.gte = new Date(dateFrom + "T00:00:00.000Z")
       }
       if (dateTo) {
-        where.date.lte = new Date(dateTo)
+        where.date.lte = new Date(dateTo + "T23:59:59.999Z")
       }
     }
 
@@ -289,7 +291,7 @@ export const updateExpense = async (
     if (updateData.description !== undefined)
       dataToUpdate.description = updateData.description || null
     if (updateData.date !== undefined)
-      dataToUpdate.date = new Date(updateData.date)
+      dataToUpdate.date = new Date(updateData.date + "T00:00:00.000Z")
     if (updateData.receiptUrl !== undefined)
       dataToUpdate.receiptUrl = updateData.receiptUrl || null
 
@@ -545,21 +547,24 @@ export const getExpenseAnalytics = async (
       >()
 
       expensesForMonthly.forEach((expense) => {
-        const monthKey = expense.date.toISOString().substring(0, 7) // YYYY-MM format
+        const expenseDate = new Date(expense.date)
+        const monthKey = `${expenseDate.getUTCFullYear()}-${String(
+          expenseDate.getUTCMonth() + 1
+        ).padStart(2, "0")}`
         const existing = monthlyMap.get(monthKey) || {
           count: 0,
           totalAmount: 0,
         }
         monthlyMap.set(monthKey, {
           count: existing.count + 1,
-          totalAmount: existing.totalAmount + expense.amount,
+          totalAmount: existing.totalAmount + Number(expense.amount),
         })
       })
 
       // Convert to array and sort by month (latest first)
       monthlyStats = Array.from(monthlyMap.entries())
         .map(([month, data]) => ({
-          month,
+          month: month + '-01',
           count: data.count,
           totalAmount: data.totalAmount,
         }))
@@ -589,21 +594,23 @@ export const getExpenseAnalytics = async (
     })
 
     // Calculate percentages for categories
-    const totalAmount = totalStats._sum.amount || 0
+    const totalAmount = Number(totalStats._sum.amount) || 0
     const categoryAnalytics: CategoryAnalytics[] = categoryStats.map(
-      (stat) => ({
-        category: stat.category,
-        count: stat._count.id,
-        totalAmount: stat._sum.amount || 0,
-        percentage:
-          totalAmount > 0 ? ((stat._sum.amount || 0) / totalAmount) * 100 : 0,
-      })
+      (stat) => {
+         const statAmount = Number(stat._sum.amount) || 0
+         return {
+          category: stat.category,
+          count: stat._count.id,
+          totalAmount: statAmount,
+          percentage: totalAmount > 0 ? (statAmount / totalAmount) * 100 : 0,
+         }
+      }
     )
 
     const statusAnalytics: StatusAnalytics[] = statusStats.map((stat) => ({
       status: stat.status,
       count: stat._count.id,
-      totalAmount: stat._sum.amount || 0,
+      totalAmount: Number(stat._sum.amount) || 0,
     }))
 
     const monthlyAnalytics: MonthlyAnalytics[] = monthlyStats.map((stat) => ({

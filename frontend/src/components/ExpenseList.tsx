@@ -46,9 +46,9 @@ import {
   Delete,
 } from "@mui/icons-material"
 import dayjs, { Dayjs } from "dayjs"
-import relativeTime from "dayjs/plugin/relativeTime"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
+import relativeTime from "dayjs/plugin/relativeTime"
 import { useDispatch, useSelector } from "react-redux"
 import {
   fetchExpenses,
@@ -63,20 +63,19 @@ import {
 } from "../services/types"
 import { type RootState, type AppDispatch } from "../store"
 
+// Enable timezone plugins
 dayjs.extend(utc)
 dayjs.extend(timezone)
 dayjs.extend(relativeTime)
 
 const ExpenseList: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>()
-  const { expenses, loading, error, filters } = useSelector(
+  const { expenses, loading, error, filters, paginated } = useSelector(
     (state: RootState) => state.expenses
   )
   const { user } = useSelector((state: RootState) => state.auth)
 
   const [showFilters, setShowFilters] = useState(false)
-  const [page, setPage] = useState(0)
-  const [rowsPerPage, setRowsPerPage] = useState(10)
   const [searchTerm, setSearchTerm] = useState("")
   const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
@@ -124,6 +123,20 @@ const ExpenseList: React.FC = () => {
     dispatch(fetchExpenses(filters))
   }, [dispatch, filters])
 
+  // Get pagination data from the paginated object
+  const pagination = paginated?.pagination || {
+    page: 1,
+    limit: 10,
+    total: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrev: false,
+  }
+
+  // Convert from 1-based (API) to 0-based (MUI TablePagination)
+  const currentPage = pagination.page - 1
+  const rowsPerPage = pagination.limit
+
   const filteredExpenses = useMemo(() => {
     if (!searchTerm.trim()) return expenses
 
@@ -135,25 +148,41 @@ const ExpenseList: React.FC = () => {
         expense.user.name.toLowerCase().includes(term) ||
         expense.amount.toString().includes(term)
     )
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expenses, searchTerm])
 
-  const paginatedExpenses = useMemo(() => {
-    const startIndex = page * rowsPerPage
-    return filteredExpenses.slice(startIndex, startIndex + rowsPerPage)
-  }, [filteredExpenses, page, rowsPerPage])
+  // For search functionality, if there's a search term, use client-side pagination
+  // Otherwise, use server-side pagination
+  const shouldUseClientPagination = searchTerm.trim() !== ""
+  
+  const displayedExpenses = useMemo(() => {
+    if (shouldUseClientPagination) {
+      const startIndex = currentPage * rowsPerPage
+      return filteredExpenses.slice(startIndex, startIndex + rowsPerPage)
+    }
+    return filteredExpenses // Server-side pagination
+  }, [filteredExpenses, currentPage, rowsPerPage, shouldUseClientPagination])
 
   const handleApplyFilters = () => {
-    const newFilters: Record<string, unknown> = {}
+    const newFilters: Record<string, unknown> = {
+      ...filters,
+      page: 1, // Reset to first page when applying filters
+    }
+    
     if (localFilters.category) newFilters.category = localFilters.category
+    else delete newFilters.category
+    
     if (localFilters.startDate)
       newFilters.dateFrom = localFilters.startDate.format("YYYY-MM-DD")
+    else delete newFilters.dateFrom
+    
     if (localFilters.endDate)
       newFilters.dateTo = localFilters.endDate.format("YYYY-MM-DD")
+    else delete newFilters.dateTo
+    
     if (localFilters.status) newFilters.status = localFilters.status
+    else delete newFilters.status
 
     dispatch(setFilters(newFilters))
-    setPage(0)
     setShowFilters(false)
   }
 
@@ -175,7 +204,6 @@ const ExpenseList: React.FC = () => {
         limit: 10,
       })
     )
-    setPage(0)
   }
 
   const handleStatusUpdate = async (
@@ -228,14 +256,36 @@ const ExpenseList: React.FC = () => {
   }
 
   const handleChangePage = (_event: unknown, newPage: number) => {
-    setPage(newPage)
+    if (shouldUseClientPagination) {
+      // Client-side pagination - just update the local page
+      // Note: We don't need to do anything here as MUI handles it
+      return
+    }
+    
+    // Server-side pagination - update filters
+    const newFilters = {
+      ...filters,
+      page: newPage + 1, // Convert from 0-based to 1-based
+    }
+    dispatch(setFilters(newFilters))
   }
 
   const handleChangeRowsPerPage = (
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
-    setRowsPerPage(parseInt(event.target.value, 10))
-    setPage(0)
+    const newLimit = parseInt(event.target.value, 10)
+    
+    if (shouldUseClientPagination) {
+      // For client-side pagination, we can't change the server limit
+      return
+    }
+    
+    const newFilters = {
+      ...filters,
+      limit: newLimit,
+      page: 1, // Reset to first page
+    }
+    dispatch(setFilters(newFilters))
   }
 
   const handleViewDetails = (expense: Expense) => {
@@ -300,11 +350,17 @@ const ExpenseList: React.FC = () => {
     }).format(amount)
   }
 
+  // Fixed date formatting to handle timezone properly
   const formatDate = (date: Date | string) => {
-    return dayjs(date).format("MMM DD, YYYY")
+    // Parse the date and format in user's local timezone
+    const parsedDate = dayjs(date)
+    return parsedDate.format("MMM DD, YYYY")
   }
 
+  // Fixed date formatting for expense date specifically
   const formatExpenseDate = (date: Date | string) => {
+    // For expense dates, we want to show the actual date that was selected
+    // without timezone conversion affecting the day
     const parsedDate = dayjs.utc(date)
     return parsedDate.format("MMM DD, YYYY")
   }
@@ -352,7 +408,7 @@ const ExpenseList: React.FC = () => {
                 {user?.role === "ADMIN" ? "All Team Expenses" : "My Expenses"}
               </Typography>
               <Typography variant="body2" color="textSecondary">
-                {filteredExpenses.length} expenses • Total:{" "}
+                {shouldUseClientPagination ? filteredExpenses.length : pagination.total} expenses • Total:{" "}
                 {formatAmount(getTotalAmount())}
               </Typography>
             </Box>
@@ -366,11 +422,11 @@ const ExpenseList: React.FC = () => {
               >
                 Filters{" "}
                 {Object.values(filters).filter(
-                  (v) => v !== undefined && v !== ""
+                  (v) => v !== undefined && v !== "" && v !== 1 && v !== 10
                 ).length > 0 &&
                   `(${
                     Object.values(filters).filter(
-                      (v) => v !== undefined && v !== ""
+                      (v) => v !== undefined && v !== "" && v !== 1 && v !== 10
                     ).length
                   })`}
               </Button>
@@ -548,7 +604,7 @@ const ExpenseList: React.FC = () => {
             <TableBody>
               {loading ? (
                 <LoadingSkeleton />
-              ) : paginatedExpenses.length === 0 ? (
+              ) : displayedExpenses.length === 0 ? (
                 <TableRow>
                   <TableCell
                     colSpan={user?.role === "ADMIN" ? 7 : 6}
@@ -564,7 +620,7 @@ const ExpenseList: React.FC = () => {
                         No expenses found
                       </Typography>
                       <Typography variant="body2" color="textSecondary">
-                        {searchTerm || Object.keys(filters).length > 0
+                        {searchTerm || Object.keys(filters).length > 2
                           ? "Try adjusting your search or filters"
                           : "Start by adding your first expense"}
                       </Typography>
@@ -572,7 +628,7 @@ const ExpenseList: React.FC = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedExpenses.map((expense: Expense) => (
+                displayedExpenses.map((expense: Expense) => (
                   <TableRow key={expense.id} hover>
                     <TableCell>
                       <Typography variant="body2">
@@ -716,11 +772,11 @@ const ExpenseList: React.FC = () => {
 
         {/* Pagination */}
         <TablePagination
-          rowsPerPageOptions={[5, 10, 25, 50]}
+          rowsPerPageOptions={shouldUseClientPagination ? [] : [5, 10, 25, 50]}
           component="div"
-          count={filteredExpenses.length}
+          count={shouldUseClientPagination ? filteredExpenses.length : pagination.total}
           rowsPerPage={rowsPerPage}
-          page={page}
+          page={currentPage}
           onPageChange={handleChangePage}
           onRowsPerPageChange={handleChangeRowsPerPage}
           labelRowsPerPage="Rows per page:"
@@ -775,7 +831,7 @@ const ExpenseList: React.FC = () => {
                       Date
                     </Typography>
                     <Typography variant="h6">
-                      {formatDate(selectedExpense.date)}
+                      {formatExpenseDate(selectedExpense.date)}
                     </Typography>
                   </Box>
                 </Box>
@@ -905,6 +961,7 @@ const ExpenseList: React.FC = () => {
         )}
       </Dialog>
 
+      {/* Rejection Dialog */}
       <Dialog
         open={showRejectDialog}
         onClose={() => setShowRejectDialog(false)}

@@ -51,7 +51,9 @@ const DashboardPage: React.FC = () => {
   const isMobile = useMediaQuery(theme.breakpoints.down("md"))
 
   const { user } = useSelector((state: RootState) => state.auth)
-  const { expenses, loading, error } = useSelector((state: RootState) => state.expenses)
+  const { expenses, loading, error } = useSelector(
+    (state: RootState) => state.expenses
+  )
 
   // Load data on component mount
   useEffect(() => {
@@ -59,12 +61,12 @@ const DashboardPage: React.FC = () => {
     if (user?.role === "ADMIN") {
       loadAnalytics()
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, user?.role])
 
   const loadAnalytics = async () => {
     if (user?.role !== "ADMIN") return
-    
+
     setAnalyticsLoading(true)
     setAnalyticsError(null)
     try {
@@ -197,7 +199,10 @@ const DashboardPage: React.FC = () => {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth={false} sx={{ mt: 4, mb: 4, px: { xs: 2, sm: 3, md: 4 } }}>
+      <Container
+        maxWidth={false}
+        sx={{ mt: 4, mb: 4, px: { xs: 2, sm: 3, md: 4 } }}
+      >
         {/* Header Section */}
         <Box
           display="flex"
@@ -266,25 +271,46 @@ const DashboardPage: React.FC = () => {
               </Alert>
             )}
 
-            <Box 
-              sx={{ 
-                display: "flex", 
+            <Box
+              sx={{
+                display: "flex",
                 flexDirection: { xs: "column", lg: "row" },
                 gap: 3,
-                minHeight: "500px"
+                minHeight: "500px",
               }}
             >
               {/* Category Breakdown */}
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 {analyticsLoading ? (
-                  <Paper sx={{ p: 3, height: "500px", display: "flex", justifyContent: "center", alignItems: "center" }}>
+                  <Paper
+                    sx={{
+                      p: 3,
+                      height: "500px",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
                     <Typography>Loading analytics...</Typography>
                   </Paper>
                 ) : analytics?.expensesByCategory ? (
-                  <CategoryChart data={analytics.expensesByCategory} />
+                  <CategoryChart
+                    data={analytics?.expensesByCategory || []}
+                    loading={analyticsLoading}
+                  />
                 ) : (
-                  <Paper sx={{ p: 3, height: "500px", display: "flex", justifyContent: "center", alignItems: "center" }}>
-                    <Typography color="textSecondary">No category data available</Typography>
+                  <Paper
+                    sx={{
+                      p: 3,
+                      height: "500px",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Typography color="textSecondary">
+                      No category data available
+                    </Typography>
                   </Paper>
                 )}
               </Box>
@@ -292,14 +318,35 @@ const DashboardPage: React.FC = () => {
               {/* Monthly Trends */}
               <Box sx={{ flex: 1, minWidth: 0 }}>
                 {analyticsLoading ? (
-                  <Paper sx={{ p: 3, height: "500px", display: "flex", justifyContent: "center", alignItems: "center" }}>
+                  <Paper
+                    sx={{
+                      p: 3,
+                      height: "500px",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
                     <Typography>Loading analytics...</Typography>
                   </Paper>
                 ) : analytics?.expensesByMonth ? (
-                  <MonthlyChart data={analytics.expensesByMonth} />
+                  <MonthlyChart
+                    data={analytics?.expensesByMonth || []}
+                    loading={analyticsLoading}
+                  />
                 ) : (
-                  <Paper sx={{ p: 3, height: "500px", display: "flex", justifyContent: "center", alignItems: "center" }}>
-                    <Typography color="textSecondary">No monthly data available</Typography>
+                  <Paper
+                    sx={{
+                      p: 3,
+                      height: "500px",
+                      display: "flex",
+                      justifyContent: "center",
+                      alignItems: "center",
+                    }}
+                  >
+                    <Typography color="textSecondary">
+                      No monthly data available
+                    </Typography>
                   </Paper>
                 )}
               </Box>
