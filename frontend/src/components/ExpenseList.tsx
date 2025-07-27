@@ -47,6 +47,8 @@ import {
 } from "@mui/icons-material"
 import dayjs, { Dayjs } from "dayjs"
 import relativeTime from "dayjs/plugin/relativeTime"
+import utc from "dayjs/plugin/utc"
+import timezone from "dayjs/plugin/timezone"
 import { useDispatch, useSelector } from "react-redux"
 import {
   fetchExpenses,
@@ -61,6 +63,8 @@ import {
 } from "../services/types"
 import { type RootState, type AppDispatch } from "../store"
 
+dayjs.extend(utc)
+dayjs.extend(timezone)
 dayjs.extend(relativeTime)
 
 const ExpenseList: React.FC = () => {
@@ -131,7 +135,7 @@ const ExpenseList: React.FC = () => {
         expense.user.name.toLowerCase().includes(term) ||
         expense.amount.toString().includes(term)
     )
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [expenses, searchTerm])
 
   const paginatedExpenses = useMemo(() => {
@@ -298,6 +302,11 @@ const ExpenseList: React.FC = () => {
 
   const formatDate = (date: Date | string) => {
     return dayjs(date).format("MMM DD, YYYY")
+  }
+
+  const formatExpenseDate = (date: Date | string) => {
+    const parsedDate = dayjs.utc(date)
+    return parsedDate.format("MMM DD, YYYY")
   }
 
   const getTotalAmount = () => {
@@ -567,7 +576,7 @@ const ExpenseList: React.FC = () => {
                   <TableRow key={expense.id} hover>
                     <TableCell>
                       <Typography variant="body2">
-                        {formatDate(expense.date)}
+                        {formatExpenseDate(expense.date)}
                       </Typography>
                       <Typography variant="caption" color="textSecondary">
                         {dayjs(expense.createdAt).fromNow()}
@@ -896,7 +905,6 @@ const ExpenseList: React.FC = () => {
         )}
       </Dialog>
 
-      {/* Rejection Dialog */}
       <Dialog
         open={showRejectDialog}
         onClose={() => setShowRejectDialog(false)}

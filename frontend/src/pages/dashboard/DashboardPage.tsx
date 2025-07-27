@@ -59,6 +59,7 @@ const DashboardPage: React.FC = () => {
     if (user?.role === "ADMIN") {
       loadAnalytics()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dispatch, user?.role])
 
   const loadAnalytics = async () => {
