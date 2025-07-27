@@ -19,12 +19,14 @@ model User {
   password  String
   name      String
   role      Role     @default(EMPLOYEE)
+  timezone  String?  @default("UTC")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
   
   // Relations
   expenses         Expense[]
-  
+  processedExpenses Expense[] @relation("ProcessedBy")
+
   @@map("users")
 }
 
@@ -34,21 +36,29 @@ model Expense {
   category    ExpenseCategory
   description String?
   date        DateTime
+  timezone    String?
   status      ExpenseStatus @default(PENDING)
   receiptUrl  String?
   rejectionReason String?
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
-  
+  processedAt      DateTime?
+  processedBy      String?  
+
   // Relations
   userId      String
   user        User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  processor        User?         @relation("ProcessedBy", fields: [processedBy], references: [id])
   
   @@map("expenses")
   @@index([userId])
   @@index([status])
   @@index([category])
   @@index([date])
+  @@index([timezone])
+  @@index([date, timezone])
+  @@index([processedAt])
+  @@index([processedBy])
 }
 
 enum Role {
