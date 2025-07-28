@@ -1,89 +1,110 @@
-// export interface ApiResponse<T> {
-//   data: T
-//   message?: string
-//   success: boolean
-// }
-
-// export interface PaginatedResponse<T> {
-//   data: T[]
-//   pagination: {
-//     page: number
-//     limit: number
-//     total: number
-//     totalPages: number
-//     hasNext: boolean
-//     hasPrev: boolean
-//   }
-// }
-
-// // Request/Response interfaces
-// export interface LoginRequest {
-//   email: string
-//   password: string
-// }
-
-// export interface LoginResponse {
-//   token: string
-//   user: {
-//     id: string
-//     email: string
-//     name: string
-//     role: "EMPLOYEE" | "ADMIN"
-//   }
-//   expiresIn: number
-// }
-
-// export interface RefreshTokenResponse {
-//   token: string
-//   expiresIn: number
-// }
-
-// export interface CreateExpenseRequest {
-//   amount: number
-//   category: string
-//   description: string
-//   date: string // ISO string
-// }
-
-// export interface UpdateExpenseRequest {
-//   amount?: number
-//   category?: string
-//   description?: string
-//   date?: string // ISO string
-// }
-
-// export interface ExpenseResponse {
-//   id: string
-//   amount: string // Decimal as string from backend
-//   category: string
-//   description: string
-//   date: string // ISO string
-//   status: "PENDING" | "APPROVED" | "REJECTED"
-//   userId: string
-//   user: {
-//     name: string
-//     email: string
-//   }
-//   createdAt: string
-//   updatedAt: string
-// }
-
-// Frontend types for users, expenses, authentication, analytics etc.
+export type Role = "EMPLOYEE" | "ADMIN";
 
 export interface User {
   id: string;
-  email: string;
   name: string;
+  email: string;
   role: Role;
-  createdAt: string;
+  timezone?: string; // New field for user's default timezone
+  createdAt?: string;
   updatedAt?: string;
-  _count?: {
-    expenses: number;
+}
+
+export type ExpenseCategory =
+  | "FOOD"
+  | "TRANSPORT"
+  | "ACCOMMODATION"
+  | "OFFICE_SUPPLIES"
+  | "SOFTWARE"
+  | "TRAINING"
+  | "MARKETING"
+  | "TRAVEL"
+  | "ENTERTAINMENT"
+  | "UTILITIES"
+  | "OTHER";
+
+export type ExpenseStatus = "PENDING" | "APPROVED" | "REJECTED";
+
+export interface Expense {
+  id: string;
+  amount: number;
+  category: ExpenseCategory;
+  description?: string | null;
+  date: string; // ISO string
+  timezone?: string; // New field for expense timezone context
+  status: ExpenseStatus;
+  rejectionReason?: string; // New field for rejection reason
+  receiptUrl?: string | null;
+  userId: string;
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    timezone?: string; // User's timezone
+  };
+  processedAt?: string; // When expense was approved/rejected
+  processedBy?: string; // Who processed the expense
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Timezone Context Interface
+export interface TimezoneContext {
+  originalTimezone: string;
+  utcDate: string;
+  displayDates: {
+    utc: string;
+    original: string;
+    viewer: string | null;
+  };
+  createdAtContext?: {
+    utc: string;
+    original: string;
+    viewer: string | null;
   };
 }
 
-export type Role = "EMPLOYEE" | "ADMIN";
+// Extended Expense with Timezone Context
+export interface ExpenseWithTimezone extends Expense {
+  timezoneContext?: TimezoneContext;
+}
 
+export interface CreateExpenseData {
+  amount: number;
+  category: ExpenseCategory;
+  description?: string;
+  date: string; // ISO string (YYYY-MM-DD)
+  timezone: string; // User's timezone when creating the expense
+  receiptUrl?: string;
+}
+
+export interface UpdateExpenseData {
+  amount?: number;
+  category?: ExpenseCategory;
+  description?: string;
+  date?: string; // ISO string (YYYY-MM-DD)
+  timezone?: string; // Updated timezone if different
+  receiptUrl?: string;
+}
+
+export interface ExpenseFilters {
+  category?: ExpenseCategory;
+  dateFrom?: string; // ISO string (YYYY-MM-DD)
+  dateTo?: string; // ISO string (YYYY-MM-DD)
+  status?: ExpenseStatus;
+  userId?: string;
+  timezone?: string; // User's timezone for proper date filtering
+  page?: number;
+  limit?: number;
+}
+
+// Approval Data Interface
+export interface ExpenseApprovalData {
+  status: ExpenseStatus;
+  rejectionReason?: string;
+}
+
+// Auth Interfaces
 export interface AuthResponse {
   success: boolean;
   message: string;
@@ -103,6 +124,7 @@ export interface RegisterData {
   name: string;
   password: string;
   role?: Role;
+  timezone?: string; // Include timezone in registration
 }
 
 export interface ChangePasswordData {
@@ -110,79 +132,7 @@ export interface ChangePasswordData {
   newPassword: string;
 }
 
-export interface Expense {
-  id: string;
-  amount: number;
-  category: ExpenseCategory;
-  description?: string | null;
-  date: string;
-  status: ExpenseStatus;
-  receiptUrl?: string | null;
-  rejectionReason?: string | null;
-  createdAt: string;
-  updatedAt?: string;
-  user: Pick<User, "id" | "name" | "email">;
-}
-
-export type ExpenseStatus = "PENDING" | "APPROVED" | "REJECTED";
-
-export type ExpenseCategory =
-  | "FOOD"
-  | "TRANSPORT"
-  | "ACCOMMODATION"
-  | "OFFICE_SUPPLIES"
-  | "SOFTWARE"
-  | "TRAINING"
-  | "MARKETING"
-  | "TRAVEL"
-  | "ENTERTAINMENT"
-  | "UTILITIES"
-  | "OTHER";
-
-export interface PaginatedResponse<T> {
-  data: T[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNext: boolean;
-    hasPrev: boolean;
-  };
-}
-
-// For creating or updating expenses
-export interface CreateExpenseData {
-  amount: number;
-  category: ExpenseCategory;
-  description?: string;
-  date: string; // ISO string format
-  receiptUrl?: string;
-}
-
-export interface UpdateExpenseData {
-  amount?: number;
-  category?: ExpenseCategory;
-  description?: string;
-  date?: string;
-  receiptUrl?: string;
-}
-
-export interface ExpenseApprovalData {
-  status: ExpenseStatus; // APPROVED or REJECTED
-  rejectionReason?: string;
-}
-
-export interface ExpenseFilters {
-  status?: ExpenseStatus;
-  category?: ExpenseCategory;
-  userId?: string;
-  dateFrom?: string;
-  dateTo?: string;
-  page?: number;
-  limit?: number;
-}
-
+// Analytics Interfaces with Timezone Awareness
 export interface CategoryAnalytics {
   category: ExpenseCategory;
   count: number;
@@ -197,7 +147,7 @@ export interface StatusAnalytics {
 }
 
 export interface MonthlyAnalytics {
-  month: string; // format 'YYYY-MM'
+  month: string; // ISO month string (YYYY-MM-01)
   count: number;
   totalAmount: number;
 }
@@ -208,12 +158,70 @@ export interface ExpenseAnalytics {
   expensesByCategory: CategoryAnalytics[];
   expensesByStatus: StatusAnalytics[];
   expensesByMonth: MonthlyAnalytics[];
-  topExpenses: Expense[];
+  topExpenses: ExpenseWithTimezone[];
+  timezoneContext?: {
+    userTimezone: string;
+    generatedAt: string;
+  };
 }
 
+// Legacy analytics interface for backward compatibility
+export interface AnalyticsData {
+  categoryBreakdown: Array<{
+    category: ExpenseCategory;
+    _sum: { amount: number };
+    _count: { id: number };
+  }>;
+  monthlyTrends: Array<{
+    month: string; // YYYY-MM
+    total: number;
+    count: number;
+  }>;
+  statusSummary: Array<{
+    status: ExpenseStatus;
+    _sum: { amount: number };
+    _count: { id: number };
+  }>;
+  timezoneContext?: {
+    userTimezone: string;
+    generatedAt: string;
+  };
+}
+
+// Pagination Interface
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  };
+}
+
+// API Response Types
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface ApiResponse<T = any> {
   success: boolean;
-  message: string;
+  message?: string;
   data?: T;
+  error?: string;
+}
+
+// Timezone Utility Types
+export interface TimezoneInfo {
+  timezone: string;
+  offset: string;
+  abbreviation: string;
+  displayName: string;
+}
+
+// User Timezone Preferences
+export interface UserTimezonePreferences {
+  defaultTimezone: string;
+  autoDetect: boolean;
+  displayFormat: '12h' | '24h';
+  showTimezoneInDates: boolean;
 }
