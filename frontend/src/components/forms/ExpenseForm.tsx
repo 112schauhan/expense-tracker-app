@@ -18,7 +18,13 @@ import {
 import { DatePicker } from "@mui/x-date-pickers/DatePicker"
 import { LocalizationProvider } from "@mui/x-date-pickers/LocalizationProvider"
 import { AdapterDayjs } from "@mui/x-date-pickers/AdapterDayjs"
-import { Close, AttachMoney, Description, Category } from "@mui/icons-material"
+import {
+  Close,
+  AttachMoney,
+  Description,
+  Category,
+  Schedule,
+} from "@mui/icons-material"
 import dayjs, { Dayjs } from "dayjs"
 import utc from "dayjs/plugin/utc"
 import timezone from "dayjs/plugin/timezone"
@@ -29,31 +35,54 @@ import { type RootState, type AppDispatch } from "../../store"
 
 dayjs.extend(utc)
 dayjs.extend(timezone)
+
 interface ExpenseFormProps {
   open: boolean
   onClose: () => void
+  onExpenseAdded?: () => void 
 }
 
 const expenseCategories = [
   { name: "FOOD", label: "Food", color: "#FF6B6B", icon: "🍽️" },
   { name: "TRANSPORT", label: "Transport", color: "#4ECDC4", icon: "🚗" },
-  { name: "ACCOMMODATION", label: "Accommodation", color: "#45B7D1", icon: "🏨" },
-  { name: "OFFICE_SUPPLIES", label: "Office Supplies", color: "#96CEB4", icon: "📎" },
+  {
+    name: "ACCOMMODATION",
+    label: "Accommodation",
+    color: "#45B7D1",
+    icon: "🏨",
+  },
+  {
+    name: "OFFICE_SUPPLIES",
+    label: "Office Supplies",
+    color: "#96CEB4",
+    icon: "📎",
+  },
   { name: "SOFTWARE", label: "Software", color: "#FFEAA7", icon: "💻" },
   { name: "TRAINING", label: "Training", color: "#DDA0DD", icon: "📚" },
   { name: "MARKETING", label: "Marketing", color: "#98D8C8", icon: "📢" },
   { name: "TRAVEL", label: "Travel", color: "#F7DC6F", icon: "✈️" },
-  { name: "ENTERTAINMENT", label: "Entertainment", color: "#AED6F1", icon: "🎭" },
+  {
+    name: "ENTERTAINMENT",
+    label: "Entertainment",
+    color: "#AED6F1",
+    icon: "🎭",
+  },
   { name: "UTILITIES", label: "Utilities", color: "#D5DBDB", icon: "⚡" },
   { name: "OTHER", label: "Other", color: "#FFA07A", icon: "📋" },
 ]
 
-const ExpenseForm: React.FC<ExpenseFormProps> = ({ open, onClose }) => {
+const ExpenseForm: React.FC<ExpenseFormProps> = ({ open, onClose, onExpenseAdded }) => {
   const [amount, setAmount] = useState("")
   const [category, setCategory] = useState<ExpenseCategory | "">("")
   const [description, setDescription] = useState("")
   const [date, setDate] = useState<Dayjs | null>(dayjs())
   const [errors, setErrors] = useState<string[]>([])
+
+  // Timezone handling
+  const [userTimezone] = useState(() => {
+    // Detect user's timezone
+    return Intl.DateTimeFormat().resolvedOptions().timeZone
+  })
 
   const dispatch = useDispatch<AppDispatch>()
   const { loading, error } = useSelector((state: RootState) => state.expenses)
@@ -74,9 +103,9 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ open, onClose }) => {
 
   const validateExpenseDate = (date: Date): string[] => {
     const errors: string[] = []
-    const today = dayjs().startOf('day')
-    const oneYearAgo = dayjs().subtract(1, 'year').startOf('day')
-    const selectedDate = dayjs(date).startOf('day')
+    const today = dayjs().startOf("day")
+    const oneYearAgo = dayjs().subtract(1, "year").startOf("day")
+    const selectedDate = dayjs(date).startOf("day")
 
     if (selectedDate.isAfter(today)) {
       errors.push("Date cannot be in the future")
@@ -138,22 +167,25 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ open, onClose }) => {
     }
 
     try {
-      // Convert date to UTC to avoid timezone issues
-      const utcDate = date!.utc().format("YYYY-MM-DD")
-      
+      const localDateString = date!.format("YYYY-MM-DD")
+
       await dispatch(
         createExpense({
           amount: parseFloat(amount),
           category: category as ExpenseCategory,
           description: description.trim(),
-          date: utcDate, // Send as UTC date string
+          date: localDateString, // Send as local date string
+          timezone: userTimezone, // Send user's timezone
         })
       ).unwrap()
 
-      // Refresh the expenses list
-      dispatch(fetchExpenses())
+      // Refresh the expenses list with timezone context
+      dispatch(fetchExpenses({ timezone: userTimezone }))
+      if (onExpenseAdded) {
+        onExpenseAdded()
+      }
       onClose()
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (err: any) {
       setErrors([err.message || "Failed to create expense"])
     }
@@ -170,6 +202,33 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ open, onClose }) => {
   const selectedCategoryData = expenseCategories.find(
     (cat) => cat.name === category
   )
+
+  // Format timezone display
+  const getTimezoneDisplay = () => {
+    const now = dayjs().tz(userTimezone)
+    const offset = now.format("Z")
+    const abbreviation = now.format("z")
+    return `${userTimezone} (${abbreviation} ${offset})`
+  }
+
+  // Get what the selected date will be in UTC for preview
+  const getUTCPreview = () => {
+    if (!date) return null
+
+    // Show what this date means in UTC
+    const startOfDayInUserTz = date.startOf("day")
+    const utcEquivalent = startOfDayInUserTz.utc()
+
+    return {
+      userDate: startOfDayInUserTz.format("MMM DD, YYYY"),
+      utcRange: `${utcEquivalent.format("MMM DD, HH:mm")} - ${utcEquivalent
+        .add(23, "hours")
+        .add(59, "minutes")
+        .format("MMM DD, HH:mm")} UTC`,
+    }
+  }
+
+  const utcPreview = getUTCPreview()
 
   return (
     <LocalizationProvider dateAdapter={AdapterDayjs}>
@@ -218,6 +277,30 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ open, onClose }) => {
                 {error}
               </Alert>
             )}
+
+            {/* Timezone Info Card */}
+            <Box
+              sx={{
+                mb: 3,
+                p: 2,
+                backgroundColor: "info.main",
+                color: "white",
+                borderRadius: 1,
+                display: "flex",
+                alignItems: "center",
+                gap: 1,
+              }}
+            >
+              <Schedule />
+              <Box>
+                <Typography variant="body2" fontWeight="medium">
+                  Your timezone: {getTimezoneDisplay()}
+                </Typography>
+                <Typography variant="caption">
+                  Dates will be stored with this timezone context
+                </Typography>
+              </Box>
+            </Box>
 
             {/* Amount Field */}
             <TextField
@@ -321,22 +404,53 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ open, onClose }) => {
               helperText={`${description.length}/200 characters`}
             />
 
-            {/* Date Field */}
-            <DatePicker
-              label="Expense Date"
-              value={date}
-              onChange={(newValue) => setDate(newValue)}
-              disabled={isFormDisabled}
-              maxDate={dayjs()}
-              minDate={dayjs().subtract(1, "year")}
-              sx={{ width: "100%", mt: 2 }}
-              slotProps={{
-                textField: {
-                  helperText:
-                    "Date cannot be in the future or older than 1 year",
-                },
-              }}
-            />
+            {/* Date Field with Timezone Context */}
+            <Box sx={{ mt: 2 }}>
+              <DatePicker
+                label="Expense Date"
+                value={date}
+                onChange={(newValue) => setDate(newValue)}
+                disabled={isFormDisabled}
+                maxDate={dayjs()}
+                minDate={dayjs().subtract(1, "year")}
+                sx={{ width: "100%" }}
+                slotProps={{
+                  textField: {
+                    helperText:
+                      "Date cannot be in the future or older than 1 year",
+                  },
+                }}
+              />
+
+              {/* UTC Preview */}
+              {utcPreview && (
+                <Box
+                  sx={{
+                    mt: 1,
+                    p: 1.5,
+                    backgroundColor: "grey.100",
+                    borderRadius: 1,
+                    border: "1px solid",
+                    borderColor: "grey.300",
+                  }}
+                >
+                  <Typography
+                    variant="caption"
+                    color="textSecondary"
+                    display="block"
+                  >
+                    <strong>Date Context:</strong>
+                  </Typography>
+                  <Typography variant="body2" sx={{ mt: 0.5 }}>
+                    Your date: <strong>{utcPreview.userDate}</strong> (
+                    {userTimezone})
+                  </Typography>
+                  <Typography variant="body2" color="textSecondary">
+                    UTC range: {utcPreview.utcRange}
+                  </Typography>
+                </Box>
+              )}
+            </Box>
 
             {/* Form Summary */}
             {amount && category && description && date && (
@@ -364,6 +478,13 @@ const ExpenseForm: React.FC<ExpenseFormProps> = ({ open, onClose }) => {
                   sx={{ mt: 0.5 }}
                 >
                   {description}
+                </Typography>
+                <Typography
+                  variant="caption"
+                  color="textSecondary"
+                  sx={{ mt: 1, display: "block" }}
+                >
+                  📍 Timezone: {userTimezone}
                 </Typography>
               </Box>
             )}

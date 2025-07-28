@@ -105,6 +105,16 @@ const DashboardPage: React.FC = () => {
     setLastRefresh(new Date())
   }
 
+   const handleExpenseAdded = () => {
+    dispatch(fetchExpenses())
+    
+    if (user?.role === "ADMIN") {
+      loadAnalytics()
+    }
+    
+    setLastRefresh(new Date())
+  }
+
   const calculateStats = () => {
     const total = expenses.reduce((sum, expense) => sum + expense.amount, 0)
     const thisMonth = expenses.filter((e) => {
@@ -382,6 +392,7 @@ const DashboardPage: React.FC = () => {
         <ExpenseForm
           open={showExpenseForm}
           onClose={() => setShowExpenseForm(false)}
+          onExpenseAdded={handleExpenseAdded}
         />
       </Container>
     </Box>

@@ -44,6 +44,8 @@ import {
   Visibility,
   ExpandLess,
   Delete,
+  Schedule,
+  Public,
 } from "@mui/icons-material"
 import dayjs, { Dayjs } from "dayjs"
 import utc from "dayjs/plugin/utc"
@@ -67,7 +69,17 @@ import { type RootState, type AppDispatch } from "../store"
 dayjs.extend(utc)
 dayjs.extend(timezone)
 dayjs.extend(relativeTime)
-
+interface ExpenseWithTimezone extends Expense {
+  timezoneContext?: {
+    originalTimezone: string
+    utcDate: string
+    displayDates: {
+      utc: string
+      original: string
+      viewer: string | null
+    }
+  }
+}
 const ExpenseList: React.FC = () => {
   const dispatch = useDispatch<AppDispatch>()
   const { expenses, loading, error, filters, paginated } = useSelector(
@@ -77,11 +89,14 @@ const ExpenseList: React.FC = () => {
 
   const [showFilters, setShowFilters] = useState(false)
   const [searchTerm, setSearchTerm] = useState("")
-  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null)
+  const [selectedExpense, setSelectedExpense] = useState<ExpenseWithTimezone | null>(null)
   const [showDetailDialog, setShowDetailDialog] = useState(false)
   const [rejectionReason, setRejectionReason] = useState("")
   const [showRejectDialog, setShowRejectDialog] = useState(false)
 
+  const [userTimezone] = useState(() => {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone
+  })
   const [localFilters, setLocalFilters] = useState({
     category: "",
     startDate: null as Dayjs | null,
@@ -120,7 +135,7 @@ const ExpenseList: React.FC = () => {
   }
 
   useEffect(() => {
-    dispatch(fetchExpenses(filters))
+    dispatch(fetchExpenses({ ...filters, timezone: userTimezone }))
   }, [dispatch, filters])
 
   // Get pagination data from the paginated object
@@ -153,7 +168,7 @@ const ExpenseList: React.FC = () => {
   // For search functionality, if there's a search term, use client-side pagination
   // Otherwise, use server-side pagination
   const shouldUseClientPagination = searchTerm.trim() !== ""
-  
+
   const displayedExpenses = useMemo(() => {
     if (shouldUseClientPagination) {
       const startIndex = currentPage * rowsPerPage
@@ -166,19 +181,20 @@ const ExpenseList: React.FC = () => {
     const newFilters: Record<string, unknown> = {
       ...filters,
       page: 1, // Reset to first page when applying filters
+      timezone: userTimezone,
     }
-    
+
     if (localFilters.category) newFilters.category = localFilters.category
     else delete newFilters.category
-    
+
     if (localFilters.startDate)
       newFilters.dateFrom = localFilters.startDate.format("YYYY-MM-DD")
     else delete newFilters.dateFrom
-    
+
     if (localFilters.endDate)
       newFilters.dateTo = localFilters.endDate.format("YYYY-MM-DD")
     else delete newFilters.dateTo
-    
+
     if (localFilters.status) newFilters.status = localFilters.status
     else delete newFilters.status
 
@@ -202,6 +218,7 @@ const ExpenseList: React.FC = () => {
         dateTo: undefined,
         page: 1,
         limit: 10,
+        timezone: userTimezone, // Reset timezone to user's timezone
       })
     )
   }
@@ -219,13 +236,13 @@ const ExpenseList: React.FC = () => {
         })
       ).unwrap()
       // Refresh the list after update
-      dispatch(fetchExpenses(filters))
+      dispatch(fetchExpenses({ ...filters, timezone: userTimezone }))
     } catch (error) {
       console.error("Failed to update expense status:", error)
     }
   }
 
-  const handleReject = (expense: Expense) => {
+  const handleReject = (expense: ExpenseWithTimezone) => {
     setSelectedExpense(expense)
     setRejectionReason("")
     setShowRejectDialog(true)
@@ -248,7 +265,7 @@ const ExpenseList: React.FC = () => {
     if (window.confirm("Are you sure you want to delete this expense?")) {
       try {
         await dispatch(deleteExpense(expenseId)).unwrap()
-        dispatch(fetchExpenses(filters))
+        dispatch(fetchExpenses({ ...filters, timezone: userTimezone }))
       } catch (error) {
         console.error("Failed to delete expense:", error)
       }
@@ -261,11 +278,12 @@ const ExpenseList: React.FC = () => {
       // Note: We don't need to do anything here as MUI handles it
       return
     }
-    
+
     // Server-side pagination - update filters
     const newFilters = {
       ...filters,
       page: newPage + 1, // Convert from 0-based to 1-based
+      timezone: userTimezone,
     }
     dispatch(setFilters(newFilters))
   }
@@ -274,21 +292,22 @@ const ExpenseList: React.FC = () => {
     event: React.ChangeEvent<HTMLInputElement>
   ) => {
     const newLimit = parseInt(event.target.value, 10)
-    
+
     if (shouldUseClientPagination) {
       // For client-side pagination, we can't change the server limit
       return
     }
-    
+
     const newFilters = {
       ...filters,
       limit: newLimit,
       page: 1, // Reset to first page
+      timezone: userTimezone,
     }
     dispatch(setFilters(newFilters))
   }
 
-  const handleViewDetails = (expense: Expense) => {
+  const handleViewDetails = (expense: ExpenseWithTimezone) => {
     setSelectedExpense(expense)
     setShowDetailDialog(true)
   }
@@ -353,7 +372,7 @@ const ExpenseList: React.FC = () => {
   // Fixed date formatting to handle timezone properly
   const formatDate = (date: Date | string) => {
     // Parse the date and format in user's local timezone
-    const parsedDate = dayjs(date)
+    const parsedDate = dayjs(date).tz(userTimezone)
     return parsedDate.format("MMM DD, YYYY")
   }
 
@@ -361,8 +380,28 @@ const ExpenseList: React.FC = () => {
   const formatExpenseDate = (date: Date | string) => {
     // For expense dates, we want to show the actual date that was selected
     // without timezone conversion affecting the day
-    const parsedDate = dayjs.utc(date)
+    const parsedDate = dayjs.utc(date).tz(userTimezone)
     return parsedDate.format("MMM DD, YYYY")
+  }
+
+  const getDateWithTimezoneContext = (
+    date: Date | string,
+    originalTimezone?: string
+  ) => {
+    const utcDate = dayjs(date)
+    const userTzDate = utcDate.tz(userTimezone)
+    const originalTzDate = originalTimezone
+      ? utcDate.tz(originalTimezone)
+      : null
+
+    return {
+      userTz: userTzDate.format("MMM DD, YYYY"),
+      originalTz: originalTzDate ? originalTzDate.format("MMM DD, YYYY") : null,
+      isSameDate: originalTzDate
+        ? userTzDate.format("YYYY-MM-DD") ===
+          originalTzDate.format("YYYY-MM-DD")
+        : true,
+    }
   }
 
   const getTotalAmount = () => {
@@ -408,8 +447,10 @@ const ExpenseList: React.FC = () => {
                 {user?.role === "ADMIN" ? "All Team Expenses" : "My Expenses"}
               </Typography>
               <Typography variant="body2" color="textSecondary">
-                {shouldUseClientPagination ? filteredExpenses.length : pagination.total} expenses • Total:{" "}
-                {formatAmount(getTotalAmount())}
+                {shouldUseClientPagination
+                  ? filteredExpenses.length
+                  : pagination.total}{" "}
+                expenses • Total: {formatAmount(getTotalAmount())}
               </Typography>
             </Box>
 
@@ -443,6 +484,23 @@ const ExpenseList: React.FC = () => {
                 </Button>
               )}
             </Box>
+          </Box>
+          <Box
+            sx={{
+              mb: 2,
+              p: 1.5,
+              backgroundColor: "info.light",
+              borderRadius: 1,
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
+            }}
+          >
+            <Schedule fontSize="small" />
+            <Typography variant="body2">
+              <strong>Your timezone:</strong> {userTimezone} • All dates are
+              displayed in your local time
+            </Typography>
           </Box>
 
           {/* Error Alert */}
@@ -582,6 +640,22 @@ const ExpenseList: React.FC = () => {
                   </Button>
                 </Box>
               </Box>
+              {(localFilters.startDate || localFilters.endDate) && (
+                <Box
+                  sx={{
+                    mt: 2,
+                    p: 1,
+                    backgroundColor: "warning.light",
+                    borderRadius: 1,
+                  }}
+                >
+                  <Typography variant="caption" color="textSecondary">
+                    <Schedule fontSize="inherit" sx={{ mr: 0.5 }} />
+                    Date filters will be applied in your timezone (
+                    {userTimezone})
+                  </Typography>
+                </Box>
+              )}
             </Card>
           </Collapse>
         </Box>
@@ -628,143 +702,176 @@ const ExpenseList: React.FC = () => {
                   </TableCell>
                 </TableRow>
               ) : (
-                displayedExpenses.map((expense: Expense) => (
-                  <TableRow key={expense.id} hover>
-                    <TableCell>
-                      <Typography variant="body2">
-                        {formatExpenseDate(expense.date)}
-                      </Typography>
-                      <Typography variant="caption" color="textSecondary">
-                        {dayjs(expense.createdAt).fromNow()}
-                      </Typography>
-                    </TableCell>
-
-                    <TableCell>
-                      <Typography variant="body2" fontWeight="medium">
-                        {formatAmount(expense.amount)}
-                      </Typography>
-                    </TableCell>
-
-                    <TableCell>
-                      <Chip
-                        label={categoryLabels[expense.category]}
-                        size="small"
-                        variant="outlined"
-                        sx={{
-                          borderRadius: 1,
-                          fontWeight: "medium",
-                        }}
-                      />
-                    </TableCell>
-
-                    <TableCell>
-                      <Typography
-                        variant="body2"
-                        sx={{
-                          maxWidth: 250,
-                          overflow: "hidden",
-                          textOverflow: "ellipsis",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={expense.description || ""}
-                      >
-                        {expense.description || "No description"}
-                      </Typography>
-                    </TableCell>
-
-                    {user?.role === "ADMIN" && (
+                displayedExpenses.map((expense: ExpenseWithTimezone) => {
+                  const dateContext = getDateWithTimezoneContext(
+                    expense.date,
+                    expense.timezone
+                  )
+                  return (
+                    <TableRow key={expense.id} hover>
                       <TableCell>
-                        <Box display="flex" alignItems="center" gap={1}>
-                          <Avatar
-                            sx={{
-                              width: 32,
-                              height: 32,
-                              fontSize: 14,
-                              bgcolor: "primary.main",
-                            }}
-                          >
-                            {expense.user.name.charAt(0).toUpperCase()}
-                          </Avatar>
-                          <Box>
-                            <Typography variant="body2" fontWeight="medium">
-                              {expense.user.name}
-                            </Typography>
-                            <Typography variant="caption" color="textSecondary">
-                              {expense.user.email}
-                            </Typography>
-                          </Box>
+                        <Box>
+                          <Typography variant="body2">
+                            {dateContext.userTz}
+                          </Typography>
+
+                          {/* Show timezone difference if applicable */}
+                          {!dateContext.isSameDate &&
+                            dateContext.originalTz &&
+                            user?.role === "ADMIN" && (
+                              <Typography
+                                variant="caption"
+                                color="textSecondary"
+                              >
+                                {dayjs(expense.createdAt).fromNow()}
+                              </Typography>
+                            )}
                         </Box>
                       </TableCell>
-                    )}
 
-                    <TableCell>
-                      <Chip
-                        label={expense.status}
-                        color={getStatusColor(expense.status)}
-                        size="small"
-                        sx={{
-                          fontWeight: "medium",
-                          minWidth: 80,
-                        }}
-                      />
-                    </TableCell>
+                      <TableCell>
+                        <Typography variant="body2" fontWeight="medium">
+                          {formatAmount(expense.amount)}
+                        </Typography>
+                      </TableCell>
 
-                    <TableCell align="center">
-                      <Box display="flex" justifyContent="center" gap={0.5}>
-                        <Tooltip title="View Details">
-                          <IconButton
-                            size="small"
-                            onClick={() => handleViewDetails(expense)}
-                          >
-                            <Visibility fontSize="small" />
-                          </IconButton>
-                        </Tooltip>
+                      <TableCell>
+                        <Chip
+                          label={categoryLabels[expense.category]}
+                          size="small"
+                          variant="outlined"
+                          sx={{
+                            borderRadius: 1,
+                            fontWeight: "medium",
+                          }}
+                        />
+                      </TableCell>
 
-                        {/* Admin Actions */}
-                        {user?.role === "ADMIN" &&
-                          expense.status === "PENDING" && (
-                            <>
-                              <Tooltip title="Approve">
-                                <IconButton
-                                  size="small"
-                                  color="success"
-                                  onClick={() =>
-                                    handleStatusUpdate(expense.id, "APPROVED")
-                                  }
-                                >
-                                  <Check fontSize="small" />
-                                </IconButton>
-                              </Tooltip>
-                              <Tooltip title="Reject">
+                      <TableCell>
+                        <Typography
+                          variant="body2"
+                          sx={{
+                            maxWidth: 250,
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                          title={expense.description || ""}
+                        >
+                          {expense.description || "No description"}
+                        </Typography>
+                      </TableCell>
+
+                      {user?.role === "ADMIN" && (
+                        <TableCell>
+                          <Box display="flex" alignItems="center" gap={1}>
+                            <Avatar
+                              sx={{
+                                width: 32,
+                                height: 32,
+                                fontSize: 14,
+                                bgcolor: "primary.main",
+                              }}
+                            >
+                              {expense.user.name.charAt(0).toUpperCase()}
+                            </Avatar>
+                            <Box>
+                              <Typography variant="body2" fontWeight="medium">
+                                {expense.user.name}
+                              </Typography>
+                              <Typography
+                                variant="caption"
+                                color="textSecondary"
+                              >
+                                {expense.user.email}
+                              </Typography>
+                              {/* Show user's timezone if different from current user */}
+                              {expense.timezone &&
+                                expense.timezone !== userTimezone && (
+                                  <Typography
+                                    variant="caption"
+                                    color="info.main"
+                                    sx={{ display: "block" }}
+                                  >
+                                    {expense.timezone}
+                                  </Typography>
+                                )}
+                            </Box>
+                          </Box>
+                        </TableCell>
+                      )}
+
+                      <TableCell>
+                        <Chip
+                          label={expense.status}
+                          color={getStatusColor(expense.status)}
+                          size="small"
+                          sx={{
+                            fontWeight: "medium",
+                            minWidth: 80,
+                          }}
+                        />
+                      </TableCell>
+
+                      <TableCell align="center">
+                        <Box display="flex" justifyContent="center" gap={0.5}>
+                          <Tooltip title="View Details">
+                            <IconButton
+                              size="small"
+                              onClick={() => handleViewDetails(expense)}
+                            >
+                              <Visibility fontSize="small" />
+                            </IconButton>
+                          </Tooltip>
+
+                          {/* Admin Actions */}
+                          {user?.role === "ADMIN" &&
+                            expense.status === "PENDING" && (
+                              <>
+                                <Tooltip title="Approve">
+                                  <IconButton
+                                    size="small"
+                                    color="success"
+                                    onClick={() =>
+                                      handleStatusUpdate(expense.id, "APPROVED")
+                                    }
+                                  >
+                                    <Check fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                                <Tooltip title="Reject">
+                                  <IconButton
+                                    size="small"
+                                    color="error"
+                                    onClick={() => handleReject(expense)}
+                                  >
+                                    <Close fontSize="small" />
+                                  </IconButton>
+                                </Tooltip>
+                              </>
+                            )}
+
+                          {/* Employee Actions - can only delete their own pending expenses */}
+                          {user?.role === "EMPLOYEE" &&
+                            expense.user.id === user.id &&
+                            expense.status === "PENDING" && (
+                              <Tooltip title="Delete">
                                 <IconButton
                                   size="small"
                                   color="error"
-                                  onClick={() => handleReject(expense)}
+                                  onClick={() =>
+                                    handleDeleteExpense(expense.id)
+                                  }
                                 >
-                                  <Close fontSize="small" />
+                                  <Delete fontSize="small" />
                                 </IconButton>
                               </Tooltip>
-                            </>
-                          )}
-
-                        {/* Employee Actions - can only delete their own pending expenses */}
-                        {user?.role === "EMPLOYEE" &&
-                          expense.user.id === user.id &&
-                          expense.status === "PENDING" && (
-                            <Tooltip title="Delete">
-                              <IconButton
-                                size="small"
-                                color="error"
-                                onClick={() => handleDeleteExpense(expense.id)}
-                              >
-                                <Delete fontSize="small" />
-                              </IconButton>
-                            </Tooltip>
-                          )}
-                      </Box>
-                    </TableCell>
-                  </TableRow>
-                ))
+                            )}
+                        </Box>
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
               )}
             </TableBody>
           </Table>
@@ -774,7 +881,11 @@ const ExpenseList: React.FC = () => {
         <TablePagination
           rowsPerPageOptions={shouldUseClientPagination ? [] : [5, 10, 25, 50]}
           component="div"
-          count={shouldUseClientPagination ? filteredExpenses.length : pagination.total}
+          count={
+            shouldUseClientPagination
+              ? filteredExpenses.length
+              : pagination.total
+          }
           rowsPerPage={rowsPerPage}
           page={currentPage}
           onPageChange={handleChangePage}
@@ -833,8 +944,74 @@ const ExpenseList: React.FC = () => {
                     <Typography variant="h6">
                       {formatExpenseDate(selectedExpense.date)}
                     </Typography>
+                    {selectedExpense.timezone && (
+                      <Typography
+                        variant="caption"
+                        color="textSecondary"
+                        sx={{ display: "flex", alignItems: "center", gap: 0.5 }}
+                      >
+                        <Schedule fontSize="inherit" />
+                        {selectedExpense.timezone}
+                      </Typography>
+                    )}
                   </Box>
                 </Box>
+                {selectedExpense.timezone &&
+                  selectedExpense.timezone !== userTimezone &&
+                  user?.role === "ADMIN" && (
+                    <Box
+                      sx={{
+                        p: 2,
+                        backgroundColor: "info.light",
+                        borderRadius: 1,
+                        border: "1px solid",
+                        borderColor: "info.main",
+                      }}
+                    >
+                      <Typography
+                        variant="subtitle2"
+                        sx={{
+                          mb: 1,
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 1,
+                        }}
+                      >
+                        <Public fontSize="small" />
+                        Timezone Context
+                      </Typography>
+                      <Stack spacing={1}>
+                        <Box display="flex" justifyContent="space-between">
+                          <Typography variant="body2">
+                            Your view ({userTimezone}):
+                          </Typography>
+                          <Typography variant="body2" fontWeight="medium">
+                            {dayjs(selectedExpense.date)
+                              .tz(userTimezone)
+                              .format("MMM DD, YYYY HH:mm")}
+                          </Typography>
+                        </Box>
+                        <Box display="flex" justifyContent="space-between">
+                          <Typography variant="body2">
+                            Employee's timezone ({selectedExpense.timezone}):
+                          </Typography>
+                          <Typography variant="body2" fontWeight="medium">
+                            {dayjs(selectedExpense.date)
+                              .tz(selectedExpense.timezone)
+                              .format("MMM DD, YYYY HH:mm")}
+                          </Typography>
+                        </Box>
+                        <Box display="flex" justifyContent="space-between">
+                          <Typography variant="body2">UTC:</Typography>
+                          <Typography variant="body2" color="textSecondary">
+                            {dayjs(selectedExpense.date)
+                              .utc()
+                              .format("MMM DD, YYYY HH:mm")}
+                          </Typography>
+                        </Box>
+                      </Stack>
+                    </Box>
+                  )}
 
                 {/* Category */}
                 <Box>

@@ -1,6 +1,12 @@
 import React from "react"
 import { BarChart } from "@mui/x-charts/BarChart"
-import { Paper, Typography, Box, useTheme, CircularProgress } from "@mui/material"
+import {
+  Paper,
+  Typography,
+  Box,
+  useTheme,
+  CircularProgress,
+} from "@mui/material"
 import { BarChartOutlined } from "@mui/icons-material"
 import dayjs from "dayjs"
 import { type MonthlyAnalytics } from "../../services/types"
@@ -10,7 +16,10 @@ interface MonthlyChartProps {
   loading?: boolean
 }
 
-const MonthlyChart: React.FC<MonthlyChartProps> = ({ data, loading = false }) => {
+const MonthlyChart: React.FC<MonthlyChartProps> = ({
+  data,
+  loading = false,
+}) => {
   const theme = useTheme()
 
   // Format currency consistently
@@ -26,21 +35,27 @@ const MonthlyChart: React.FC<MonthlyChartProps> = ({ data, loading = false }) =>
   // Process and validate data with proper type conversion
   const processedData = React.useMemo(() => {
     if (!data || data.length === 0) return []
-    
+
     // Filter out invalid data and convert types
     return data
-      .filter(item => {
+      .filter((item) => {
         const amount = Number(item.totalAmount)
         const count = Number(item.count)
         return !isNaN(amount) && !isNaN(count) && amount >= 0 && count >= 0
       })
-      .map(item => ({
-        month: item.month,
-        count: Number(item.count) || 0,
-        totalAmount: Number(item.totalAmount) || 0,
-      }))
-      .sort((a, b) => dayjs(a.month).unix() - dayjs(b.month).unix())
-      .slice(-6) // Take last 6 months
+      .map((item) => {
+        const monthDate = dayjs(item.month)
+        if (!monthDate.isValid()) return null
+        return {
+          month: monthDate.format("YYYY-MM-DD"),
+          totalAmount: Number(item.totalAmount) || 0,
+          count: Number(item.count) || 0,
+          originalMonth: item.month,
+        }
+      })
+      .filter((item) => item !== null)
+      .sort((a, b) => dayjs(a.month).unix() - dayjs(b.month).unix()) // Sort chronologically
+      .slice(-6)
   }, [data])
 
   const chartData = React.useMemo(() => {
@@ -51,16 +66,15 @@ const MonthlyChart: React.FC<MonthlyChartProps> = ({ data, loading = false }) =>
     return processedData.map((item) => dayjs(item.month).format("MMM YYYY"))
   }, [processedData])
 
-  // const counts = React.useMemo(() => {
-  //   return processedData.map((item) => item.count)
-  // }, [processedData])
-
   const totals = React.useMemo(() => {
-    const totalAmount = processedData.reduce((sum, item) => sum + item.totalAmount, 0)
+    const totalAmount = processedData.reduce(
+      (sum, item) => sum + item.totalAmount,
+      0
+    )
     const totalCount = processedData.reduce((sum, item) => sum + item.count, 0)
     const maxValue = chartData.length > 0 ? Math.max(...chartData) : 0
     const avgValue = chartData.length > 0 ? totalAmount / chartData.length : 0
-    
+
     return {
       totalAmount,
       totalCount,
@@ -205,9 +219,12 @@ const MonthlyChart: React.FC<MonthlyChartProps> = ({ data, loading = false }) =>
             Trend:
           </Typography>
           {(() => {
-            const lastMonth = processedData[processedData.length - 1].totalAmount
-            const prevMonth = processedData[processedData.length - 2].totalAmount
-            const change = prevMonth > 0 ? ((lastMonth - prevMonth) / prevMonth) * 100 : 0
+            const lastMonth =
+              processedData[processedData.length - 1].totalAmount
+            const prevMonth =
+              processedData[processedData.length - 2].totalAmount
+            const change =
+              prevMonth > 0 ? ((lastMonth - prevMonth) / prevMonth) * 100 : 0
             const isIncrease = change > 0
 
             return (
