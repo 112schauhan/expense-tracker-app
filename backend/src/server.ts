@@ -29,6 +29,7 @@ const corsOptions = {
   origin: [
     "http://localhost:5173",
     "https://expense-tracker-app-le5e.vercel.app",
+    "https://expense-tracker-app-git-ff57d2-surbhi-singhs-projects-c80533b8.vercel.app/",
     "https://expense-tracker-app-production-07bb.up.railway.app"
   ],
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH","OPTIONS"],
