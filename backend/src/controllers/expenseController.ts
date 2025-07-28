@@ -13,7 +13,38 @@ import {
   MonthlyAnalytics,
 } from "../types"
 import { ExpenseStatus, Role } from "@prisma/client"
-import { parse } from "path"
+import { DateTime } from "luxon"
+
+// Utility function to convert user's local date to UTC date range
+const getUTCDateRange = (localDate: string, timezone: string) => {
+  const startOfDay = DateTime.fromISO(localDate, { zone: timezone }).startOf('day')
+  const endOfDay = DateTime.fromISO(localDate, { zone: timezone }).endOf('day')
+  
+  return {
+    start: startOfDay.toUTC().toJSDate(),
+    end: endOfDay.toUTC().toJSDate()
+  }
+}
+
+// Utility function to convert date range with timezone context
+const getUTCDateRangeForFilters = (dateFrom?: string, dateTo?: string, timezone?: string) => {
+  if (!dateFrom && !dateTo) return {}
+  
+  const userTimezone = timezone || 'UTC'
+  const dateFilter: any = {}
+  
+  if (dateFrom) {
+    const startOfDay = DateTime.fromISO(dateFrom, { zone: userTimezone }).startOf('day')
+    dateFilter.gte = startOfDay.toUTC().toJSDate()
+  }
+  
+  if (dateTo) {
+    const endOfDay = DateTime.fromISO(dateTo, { zone: userTimezone }).endOf('day')
+    dateFilter.lte = endOfDay.toUTC().toJSDate()
+  }
+  
+  return dateFilter
+}
 
 export const createExpense = async (
   req: AuthRequest,
@@ -34,16 +65,28 @@ export const createExpense = async (
       description,
       date,
       receiptUrl,
-    }: CreateExpenseData = req.body
+      timezone, // New field for user's timezone
+    }: CreateExpenseData & { timezone: string } = req.body
 
-    const expenseDate = new Date(date + "T00:00:00.000Z")
+    // Validate timezone
+    if (!timezone) {
+      res.status(400).json({
+        success: false,
+        message: "Timezone is required",
+      })
+      return
+    }
+
+    // Convert user's local date to UTC while preserving the intended date
+    const { start: expenseDate } = getUTCDateRange(date, timezone)
 
     const expense = await prisma.expense.create({
       data: {
         amount,
         category,
         description: description || null,
-        date: expenseDate,
+        date: expenseDate, // Stored as UTC
+        timezone, // Store user's timezone for context
         receiptUrl: receiptUrl || null,
         userId: req.user.id,
       },
@@ -53,6 +96,7 @@ export const createExpense = async (
             id: true,
             name: true,
             email: true,
+            timezone: true, // Include user's timezone
           },
         },
       },
@@ -91,9 +135,10 @@ export const getExpenses = async (
       userId,
       dateFrom,
       dateTo,
+      timezone, // User's current timezone for filtering
       page = 1,
       limit = 10,
-    }: ExpenseFilters = req.query as any
+    }: ExpenseFilters & { timezone?: string } = req.query as any
 
     // Build where clause
     const where: any = {}
@@ -114,14 +159,10 @@ export const getExpenses = async (
       where.category = category
     }
 
+    // Timezone-aware date filtering
     if (dateFrom || dateTo) {
-      where.date = {}
-      if (dateFrom) {
-        where.date.gte = new Date(dateFrom + "T00:00:00.000Z")
-      }
-      if (dateTo) {
-        where.date.lte = new Date(dateTo + "T23:59:59.999Z")
-      }
+      const userTimezone = timezone || req.user.timezone || 'UTC'
+      where.date = getUTCDateRangeForFilters(dateFrom, dateTo, userTimezone)
     }
 
     // Calculate pagination
@@ -140,6 +181,7 @@ export const getExpenses = async (
             id: true,
             name: true,
             email: true,
+            timezone: true,
           },
         },
       },
@@ -150,10 +192,25 @@ export const getExpenses = async (
       take: parseInt(take.toString()),
     })
 
+    // Add timezone context to each expense for frontend processing
+    const expensesWithTimezoneContext = expenses.map(expense => ({
+      ...expense,
+      timezoneContext: {
+        originalTimezone: expense.timezone,
+        utcDate: expense.date.toISOString(),
+        // Calculate what this date means in different timezones
+        displayDates: {
+          utc: DateTime.fromJSDate(expense.date).toUTC().toFormat('MMM dd, yyyy'),
+          original: DateTime.fromJSDate(expense.date).setZone(expense.timezone ?? 'UTC').toFormat('MMM dd, yyyy'),
+          viewer: timezone ? DateTime.fromJSDate(expense.date).setZone(timezone).toFormat('MMM dd, yyyy') : null,
+        }
+      }
+    }))
+
     const totalPages = Math.ceil(total / limit)
 
-    const response: PaginatedResponse<(typeof expenses)[0]> = {
-      data: expenses,
+    const response: PaginatedResponse<typeof expensesWithTimezoneContext[0]> = {
+      data: expensesWithTimezoneContext,
       pagination: {
         page,
         limit,
@@ -191,6 +248,7 @@ export const getExpenseById = async (
     }
 
     const { id } = req.params
+    const { timezone } = req.query as { timezone?: string }
 
     const expense = await prisma.expense.findUnique({
       where: { id },
@@ -200,6 +258,7 @@ export const getExpenseById = async (
             id: true,
             name: true,
             email: true,
+            timezone: true,
           },
         },
       },
@@ -222,9 +281,28 @@ export const getExpenseById = async (
       return
     }
 
+    // Add timezone context
+    const expenseWithTimezoneContext = {
+      ...expense,
+      timezoneContext: {
+        originalTimezone: expense.timezone,
+        utcDate: expense.date.toISOString(),
+        displayDates: {
+          utc: DateTime.fromJSDate(expense.date).toUTC().toFormat('MMM dd, yyyy HH:mm'),
+          original: DateTime.fromJSDate(expense.date).setZone(expense.timezone ?? 'UTC').toFormat('MMM dd, yyyy HH:mm'),
+          viewer: timezone ? DateTime.fromJSDate(expense.date).setZone(timezone).toFormat('MMM dd, yyyy HH:mm') : null,
+        },
+        createdAtContext: {
+          utc: DateTime.fromJSDate(expense.createdAt).toUTC().toFormat('MMM dd, yyyy HH:mm'),
+          original: DateTime.fromJSDate(expense.createdAt).setZone(expense.timezone ?? 'UTC').toFormat('MMM dd, yyyy HH:mm'),
+          viewer: timezone ? DateTime.fromJSDate(expense.createdAt).setZone(timezone).toFormat('MMM dd, yyyy HH:mm') : null,
+        }
+      }
+    }
+
     res.json({
       success: true,
-      data: expense,
+      data: expenseWithTimezoneContext,
     })
   } catch (error) {
     console.error("Get expense by ID error:", error)
@@ -249,7 +327,7 @@ export const updateExpense = async (
     }
 
     const { id } = req.params
-    const updateData: UpdateExpenseData = req.body
+    const updateData: UpdateExpenseData & { timezone?: string } = req.body
 
     // Find existing expense
     const existingExpense = await prisma.expense.findUnique({
@@ -286,14 +364,19 @@ export const updateExpense = async (
     const dataToUpdate: any = {}
 
     if (updateData.amount !== undefined) dataToUpdate.amount = updateData.amount
-    if (updateData.category !== undefined)
-      dataToUpdate.category = updateData.category
-    if (updateData.description !== undefined)
-      dataToUpdate.description = updateData.description || null
-    if (updateData.date !== undefined)
-      dataToUpdate.date = new Date(updateData.date + "T00:00:00.000Z")
-    if (updateData.receiptUrl !== undefined)
-      dataToUpdate.receiptUrl = updateData.receiptUrl || null
+    if (updateData.category !== undefined) dataToUpdate.category = updateData.category
+    if (updateData.description !== undefined) dataToUpdate.description = updateData.description || null
+    if (updateData.receiptUrl !== undefined) dataToUpdate.receiptUrl = updateData.receiptUrl || null
+    
+    // Handle date update with timezone
+    if (updateData.date !== undefined) {
+      const timezone = updateData.timezone || existingExpense.timezone || 'UTC'
+      const { start: expenseDate } = getUTCDateRange(updateData.date, timezone)
+      dataToUpdate.date = expenseDate
+      if (updateData.timezone) {
+        dataToUpdate.timezone = updateData.timezone
+      }
+    }
 
     const updatedExpense = await prisma.expense.update({
       where: { id },
@@ -304,6 +387,7 @@ export const updateExpense = async (
             id: true,
             name: true,
             email: true,
+            timezone: true,
           },
         },
       },
@@ -411,6 +495,7 @@ export const approveRejectExpense = async (
             id: true,
             name: true,
             email: true,
+            timezone: true,
           },
         },
       },
@@ -438,8 +523,10 @@ export const approveRejectExpense = async (
       where: { id },
       data: {
         status,
-        rejectionReason:
-          status === ExpenseStatus.REJECTED ? rejectionReason : null,
+        rejectionReason: status === ExpenseStatus.REJECTED ? rejectionReason : null,
+        // Track when and by whom the expense was processed
+        processedAt: new Date(),
+        processedBy: req.user.id,
       },
       include: {
         user: {
@@ -447,6 +534,7 @@ export const approveRejectExpense = async (
             id: true,
             name: true,
             email: true,
+            timezone: true,
           },
         },
       },
@@ -479,7 +567,7 @@ export const getExpenseAnalytics = async (
       return
     }
 
-    const { dateFrom, dateTo, userId } = req.query as any
+    const { dateFrom, dateTo, userId, timezone } = req.query as any
 
     // Build where clause
     const where: any = {}
@@ -491,15 +579,10 @@ export const getExpenseAnalytics = async (
       where.userId = userId
     }
 
-    // Date filtering
+    // Timezone-aware date filtering for analytics
     if (dateFrom || dateTo) {
-      where.date = {}
-      if (dateFrom) {
-        where.date.gte = new Date(dateFrom)
-      }
-      if (dateTo) {
-        where.date.lte = new Date(dateTo)
-      }
+      const userTimezone = timezone || req.user.timezone || 'UTC'
+      where.date = getUTCDateRangeForFilters(dateFrom, dateTo, userTimezone)
     }
 
     // Get total expenses and amount
@@ -525,36 +608,31 @@ export const getExpenseAnalytics = async (
       _sum: { amount: true },
     })
 
-    // Get monthly statistics
+    // Get monthly statistics with timezone awareness
     let monthlyStats: any[] = []
     try {
-      // Get all expenses for the date range and group them manually
       const expensesForMonthly = await prisma.expense.findMany({
         where,
         select: {
           date: true,
           amount: true,
+          timezone: true,
         },
         orderBy: {
           date: "desc",
         },
       })
 
-      // Group by month manually
-      const monthlyMap = new Map<
-        string,
-        { count: number; totalAmount: number }
-      >()
+      // Group by month with timezone consideration
+      const userTimezone = timezone || req.user.timezone || 'UTC'
+      const monthlyMap = new Map<string, { count: number; totalAmount: number }>()
 
       expensesForMonthly.forEach((expense) => {
-        const expenseDate = new Date(expense.date)
-        const monthKey = `${expenseDate.getUTCFullYear()}-${String(
-          expenseDate.getUTCMonth() + 1
-        ).padStart(2, "0")}`
-        const existing = monthlyMap.get(monthKey) || {
-          count: 0,
-          totalAmount: 0,
-        }
+        // Convert UTC date to user's timezone for proper monthly grouping
+        const expenseInUserTz = DateTime.fromJSDate(expense.date).setZone(userTimezone)
+        const monthKey = expenseInUserTz.toFormat('yyyy-MM')
+        
+        const existing = monthlyMap.get(monthKey) || { count: 0, totalAmount: 0 }
         monthlyMap.set(monthKey, {
           count: existing.count + 1,
           totalAmount: existing.totalAmount + Number(expense.amount),
@@ -572,11 +650,11 @@ export const getExpenseAnalytics = async (
         .slice(0, 12) // Limit to last 12 months
     } catch (error) {
       console.error("Monthly stats processing error:", error)
-      // Fallback to empty array if processing fails
       monthlyStats = []
     }
+
     // Get top expenses
-    const topExpenses = await prisma.expense.findMany({
+    const topExpensesRaw = await prisma.expense.findMany({
       where,
       include: {
         user: {
@@ -584,6 +662,7 @@ export const getExpenseAnalytics = async (
             id: true,
             name: true,
             email: true,
+            timezone: true,
           },
         },
       },
@@ -593,19 +672,27 @@ export const getExpenseAnalytics = async (
       take: 10,
     })
 
+    const topExpenses = topExpensesRaw.map(expense => ({
+      ...expense,
+      timezone: expense.timezone ?? undefined,
+      rejectionReason: expense.rejectionReason === null ? undefined : expense.rejectionReason,
+      user:{
+        ...expense.user,
+        timezone: expense.user.timezone ?? undefined,
+      }
+    }))
+
     // Calculate percentages for categories
     const totalAmount = Number(totalStats._sum.amount) || 0
-    const categoryAnalytics: CategoryAnalytics[] = categoryStats.map(
-      (stat) => {
-         const statAmount = Number(stat._sum.amount) || 0
-         return {
-          category: stat.category,
-          count: stat._count.id,
-          totalAmount: statAmount,
-          percentage: totalAmount > 0 ? (statAmount / totalAmount) * 100 : 0,
-         }
+    const categoryAnalytics: CategoryAnalytics[] = categoryStats.map((stat) => {
+      const statAmount = Number(stat._sum.amount) || 0
+      return {
+        category: stat.category,
+        count: stat._count.id,
+        totalAmount: statAmount,
+        percentage: totalAmount > 0 ? (statAmount / totalAmount) * 100 : 0,
       }
-    )
+    })
 
     const statusAnalytics: StatusAnalytics[] = statusStats.map((stat) => ({
       status: stat.status,
@@ -625,7 +712,12 @@ export const getExpenseAnalytics = async (
       expensesByCategory: categoryAnalytics,
       expensesByStatus: statusAnalytics,
       expensesByMonth: monthlyAnalytics,
-      topExpenses,
+      topExpenses: topExpenses,
+      // Add timezone context for analytics
+      timezoneContext: {
+        userTimezone: timezone || req.user.timezone || 'UTC',
+        generatedAt: new Date().toISOString(),
+      }
     }
 
     res.json({

@@ -36,7 +36,7 @@ model Expense {
   category    ExpenseCategory
   description String?
   date        DateTime
-  timezone    String?
+  timezone    String?       @default("UTC")
   status      ExpenseStatus @default(PENDING)
   receiptUrl  String?
   rejectionReason String?

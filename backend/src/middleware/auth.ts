@@ -47,6 +47,7 @@ export const authenticate = async (
         password: true,
         name: true,
         role: true,
+        timezone: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -60,7 +61,7 @@ export const authenticate = async (
       return
     }
 
-    req.user = user
+    req.user = { ...user, timezone: user.timezone ?? undefined }
     next()
   } catch (error) {
     if (error instanceof jwt.JsonWebTokenError) {
@@ -138,13 +139,14 @@ export const optionalAuth = async (
         password: true,
         name: true,
         role: true,
+        timezone: true,
         createdAt: true,
         updatedAt: true,
       },
     })
 
     if (user) {
-      req.user = user
+      req.user = { ...user, timezone: user.timezone ?? undefined }
     }
   } catch (error) {
     console.log("Optional auth failed:", error)
